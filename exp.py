@@ -5,6 +5,7 @@ import subprocess as sh
 import time
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--qdisc', type=str, dest='qdisc')
 parser.add_argument('--outdir', type=str, dest='outdir')
 parser.add_argument('--alg', type=str, dest='alg')
 parser.add_argument('--conns', type=int, dest='conns')
@@ -18,8 +19,8 @@ algs = {
     'osc': osc,
 }
 
-def remote_script(outdir, alg, conns):
-    inbox = 'sudo ~/bundler/box/target/release/inbox --iface=10gp1 --handle_major=0x8004 --handle_minor=0x0 --port=28316 --sample_rate=128 2> {}/inbox.out'.format(outdir)
+def remote_script(outdir, qdisc, alg, conns):
+    inbox = 'sudo ~/bundler/box/target/release/inbox --iface=10gp1 --handle_major={} --handle_minor=0x0 --port=28316 --sample_rate=128 2> {}/inbox.out'.format(qdisc, outdir)
     iperf = '~/iperf/src/iperf -s -p 5000 --reverse -i 1 -t 30 -P {} > {}/iperf-server.out'.format(conns, outdir)
     with open('remote.sh', 'w') as f:
         f.write('#!/bin/bash\n\n')
@@ -53,13 +54,15 @@ def local_script(outdir, conns):
     sh.run(mahimahi, shell=True)
 
 args = parser.parse_args()
-remote_script(args.outdir, algs[args.alg], args.conns)
+remote_script(args.outdir, args.qdisc, algs[args.alg], args.conns)
 local_script(args.outdir, args.conns)
 
 sh.run('ssh 10.1.1.2 sudo pkill inbox', shell=True)
 sh.run('ssh 10.1.1.2 sudo pkill nimbus', shell=True)
 sh.run('ssh 10.1.1.2 sudo pkill bbr', shell=True)
 sh.run('ssh 10.1.1.2 sudo pkill iperf', shell=True)
+sh.run('sudo pkill outbox', shell=True)
+sh.run('sudo pkill iperf', shell=True)
 sh.run('scp 10.1.1.2:~/{0}/* ./{0}'.format(args.outdir), shell=True)
 
 sh.run('mm-graph {}/mahimahi.log 50'.format(args.outdir), shell=True)
