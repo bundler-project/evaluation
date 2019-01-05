@@ -12,7 +12,7 @@ parser.add_argument('--samplerate', type=int, dest='samplerate')
 parser.add_argument('--conns', type=int, dest='conns')
 parser.add_argument('--no_bundler', action='store_false', dest='usebundler')
 
-nimbus = 'sudo ~/nimbus/target/release/nimbus --ipc=unix --use_switching=false --flow_mode=Delay --bw_est_mode=false 2> {}/nimbus.out'
+nimbus = 'sudo ~/nimbus/target/release/nimbus --ipc=unix --use_switching=false --flow_mode=Delay --bw_est_mode=false --pulse_size=0.01 2> {}/nimbus.out'
 bbr = 'sudo ~/bbr/target/release/bbr --ipc=unix 2> {}/bbr.out'
 osc = 'sudo python ~/portus/python/osc.py'
 algs = {
