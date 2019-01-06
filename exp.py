@@ -39,7 +39,7 @@ def remote_script(use_bundler, outdir, qdisc, alg, conns, samplerate):
     sh.Popen('ssh 10.1.1.2 ~/remote.sh' , shell=True)
 
 def local_script(use_bundler, outdir, conns, samplerate):
-    outbox = 'sudo ~/bundler/box/target/release/outbox --filter "port 5000" --iface ingress --inbox 10.1.1.2:28316 --no_ethernet --sample_rate {} > {}/outbox.out'.format(samplerate, outdir)
+    outbox = 'sudo ~/bundler/box/target/release/outbox --filter "port 5000" --iface ingress --inbox 10.1.1.2:28316 --no_ethernet --sample_rate {} 2> {}/outbox.out'.format(samplerate, outdir)
     iperf = 'iperf -c 10.1.1.2 -p 5000 --reverse -i 1 -P {} > {}/iperf-client.out'.format(conns, outdir)
 
     with open('local.sh', 'w') as f:
