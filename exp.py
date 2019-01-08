@@ -23,7 +23,7 @@ algs = {
 
 def remote_script(use_bundler, outdir, qdisc, alg, conns, samplerate):
     inbox = 'sudo ~/bundler/box/target/release/inbox --iface=10gp1 --handle_major={} --handle_minor=0x0 --port=28316 --sample_rate={} 2> {}/inbox.out'.format(qdisc, samplerate, outdir)
-    iperf = '~/iperf/src/iperf -s -p 5000 --reverse -i 1 -t 30 -P {} > {}/iperf-server.out'.format(conns, outdir)
+    iperf = '~/iperf/src/iperf -s -p 5000 --reverse -i 1 -t 60 -P {} > {}/iperf-server.out'.format(conns, outdir)
     with open('remote.sh', 'w') as f:
         f.write('#!/bin/bash\n\n')
         f.write('rm -rf ~/{}\n'.format(outdir))
@@ -58,8 +58,6 @@ def local_script(use_bundler, outdir, conns, samplerate):
     sh.run(mahimahi, shell=True)
 
 args = parser.parse_args()
-remote_script(args.usebundler, args.outdir, args.qdisc, algs[args.alg], args.conns, args.samplerate)
-local_script(args.usebundler, args.outdir, args.conns, args.samplerate)
 
 sh.run('ssh 10.1.1.2 sudo pkill inbox', shell=True)
 sh.run('ssh 10.1.1.2 sudo pkill nimbus', shell=True)
@@ -67,8 +65,11 @@ sh.run('ssh 10.1.1.2 sudo pkill bbr', shell=True)
 sh.run('ssh 10.1.1.2 sudo pkill iperf', shell=True)
 sh.run('sudo pkill outbox', shell=True)
 sh.run('sudo pkill iperf', shell=True)
-sh.run('scp 10.1.1.2:~/{0}/* ./{0}'.format(args.outdir), shell=True)
 
+print("starting")
+remote_script(args.usebundler, args.outdir, args.qdisc, algs[args.alg], args.conns, args.samplerate)
+local_script(args.usebundler, args.outdir, args.conns, args.samplerate)
+sh.run('scp 10.1.1.2:~/{0}/* ./{0}'.format(args.outdir), shell=True)
 sh.run('mm-graph {}/mahimahi.log 50'.format(args.outdir), shell=True)
 
 # impl dual mahimahi
