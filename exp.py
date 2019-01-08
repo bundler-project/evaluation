@@ -24,7 +24,9 @@ algs = {
 
 def remote_script(use_bundler, outdir, qdisc, alg, conns, samplerate, dynamic_samplerate):
     inbox = 'sudo ~/bundler/box/target/release/inbox --iface=10gp1 --handle_major={} --handle_minor=0x0 --port=28316 --use_dynamic_sample_rate={} --sample_rate={} 2> {}/inbox.out'.format(qdisc, dynamic_samplerate, samplerate, outdir)
-    iperf = '~/iperf/src/iperf -s -p 5000 --reverse -i 1 -t 60 -P {} > {}/iperf-server.out'.format(conns, outdir)
+    iperf = '~/iperf/src/iperf -s -p 5000 --reverse -i 1 -t 30 -P {} > {}/iperf-server.out'.format(conns, outdir)
+    print(inbox)
+    print(iperf)
     with open('remote.sh', 'w') as f:
         f.write('#!/bin/bash\n\n')
         f.write('rm -rf ~/{}\n'.format(outdir))
@@ -42,7 +44,8 @@ def remote_script(use_bundler, outdir, qdisc, alg, conns, samplerate, dynamic_sa
 def local_script(use_bundler, outdir, conns, samplerate):
     outbox = 'sudo ~/bundler/box/target/release/outbox --filter "port 5000" --iface ingress --inbox 10.1.1.2:28316 --no_ethernet --sample_rate {} 2> {}/outbox.out'.format(samplerate, outdir)
     iperf = 'iperf -c 10.1.1.2 -p 5000 --reverse -i 1 -P {} > {}/iperf-client.out'.format(conns, outdir)
-
+    print(outbox)
+    print(iperf)
     with open('local.sh', 'w') as f:
         f.write('#!/bin/bash\n\n')
         if use_bundler:
@@ -80,8 +83,8 @@ remote_script(
     args.qdisc,
     algs[args.alg],
     args.conns,
-    'true' if args.dynamic_epoch else 'false',
     args.samplerate,
+    'true' if args.dynamic_epoch else 'false',
 )
 
 local_script(
