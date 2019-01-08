@@ -5,6 +5,7 @@ import subprocess as sh
 import time
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--time', type=int, dest='time')
 parser.add_argument('--qdisc', type=str, dest='qdisc')
 parser.add_argument('--outdir', type=str, dest='outdir')
 parser.add_argument('--alg', type=str, dest='alg')
@@ -22,9 +23,9 @@ algs = {
     'osc': osc,
 }
 
-def remote_script(use_bundler, outdir, qdisc, alg, conns, samplerate, dynamic_samplerate):
+def remote_script(time, use_bundler, outdir, qdisc, alg, conns, samplerate, dynamic_samplerate):
     inbox = 'sudo ~/bundler/box/target/release/inbox --iface=10gp1 --handle_major={} --handle_minor=0x0 --port=28316 --use_dynamic_sample_rate={} --sample_rate={} 2> {}/inbox.out'.format(qdisc, dynamic_samplerate, samplerate, outdir)
-    iperf = '~/iperf/src/iperf -s -p 5000 --reverse -i 1 -t 30 -P {} > {}/iperf-server.out'.format(conns, outdir)
+    iperf = '~/iperf/src/iperf -s -p 5000 --reverse -i 1 -t {} -P {} > {}/iperf-server.out'.format(time, conns, outdir)
     print(inbox)
     print(iperf)
     with open('remote.sh', 'w') as f:
@@ -78,6 +79,7 @@ for k in sorted(a):
     print(k, a[k])
 
 remote_script(
+    args.time,
     args.usebundler,
     args.outdir,
     args.qdisc,
