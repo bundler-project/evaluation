@@ -2,9 +2,13 @@
 
 import sys
 
+delim = ":"
+if len(sys.argv) > 1:
+    delim = sys.argv[1]
+
 def flds(line):
     for f in line:
-        sp = f.split(":")
+        sp = f.split(delim)
         yield sp[0], sp[1].split(",")[0]
 
 head = None

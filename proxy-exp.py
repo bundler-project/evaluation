@@ -7,7 +7,6 @@ import sys
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--outdir', type=str, dest='outdir')
-parser.add_argument('--three_machines', action='store_true', dest='three_machines')
 
 parser.add_argument('--no_bundler', action='store_false', dest='usebundler')
 parser.add_argument('--qdisc', type=str, dest='qdisc')
@@ -15,10 +14,7 @@ parser.add_argument('--alg', type=str, dest='alg')
 parser.add_argument('--static_epoch', action='store_false', dest='dynamic_epoch')
 parser.add_argument('--samplerate', type=int, dest='samplerate')
 
-parser.add_argument('--time', type=int, dest='time')
-parser.add_argument('--cross_traffic', type=str, dest='cross_traffic', default=None)
 parser.add_argument('--conns', type=int, dest='conns')
-parser.add_argument('--fct_experiment', action='store_true', dest='do_fct_experiment')
 parser.add_argument('--load', type=str, dest='load')
 parser.add_argument('--seed', type=int, dest='seed')
 parser.add_argument('--reqs', type=int, dest='reqs')
@@ -39,10 +35,7 @@ def kill_everything():
     sh.run('ssh 10.1.1.2 sudo pkill -9 inbox', shell=True)
     sh.run('ssh 10.1.1.2 sudo pkill -9 nimbus', shell=True)
     sh.run('ssh 10.1.1.2 sudo pkill -9 bbr', shell=True)
-    sh.run('ssh 10.1.1.2 sudo pkill -9 iperf', shell=True)
-    sh.run('ssh 10.1.1.2 sudo pkill -9 -f ./bin/server', shell=True)
     sh.run('ssh 192.168.1.5 sudo pkill -9 -f ./bin/server', shell=True)
-    sh.run('ssh 192.168.1.5 sudo pkill -9 iperf', shell=True)
     sh.run('sudo pkill -9 outbox', shell=True)
     sh.run('sudo pkill -9 iperf', shell=True)
 
@@ -59,10 +52,7 @@ def write_etg_config(name, args):
 
 def remote_script(args):
     inbox = 'sudo ~/bundler/box/target/release/inbox --iface=10gp1 --handle_major={} --handle_minor=0x0 --port=28316 --use_dynamic_sample_rate={} --sample_rate={} 2> {}/inbox.out'.format(args.qdisc, args.dynamic_samplerate, args.samplerate, args.outdir)
-    if not args.do_fct_experiment:
-        exc = '~/iperf/src/iperf -s -p 5000 --reverse -i 1 -t {} -P {} > {}/iperf-server.out'.format(args.time, args.conns, args.outdir)
-    else:
-        exc = 'cd ~/bundler/scripts && ./run-multiple-server.sh 5000 {}'.format(args.conns)
+    exc = 'cd ~/bundler/scripts && ./run-multiple-server.sh 5000 {}'.format(args.conns)
 
     print(inbox)
     print(exc)
@@ -77,23 +67,20 @@ def remote_script(args):
             f.write('sleep 1\n')
             f.write('echo "starting alg: $(date)"\n')
             f.write(args.alg.format(args.outdir) + ' &\n')
-        if not args.three_machines:
-            f.write(exc + '\n')
 
     sh.run('chmod +x remote.sh', shell=True)
     sh.run('scp ./remote.sh 10.1.1.2:', shell=True)
 
-    if args.three_machines:
-        with open('remote.sh', 'w') as f:
-            f.write('#!/bin/bash\n\n')
-            f.write('rm -rf ~/{}\n'.format(args.outdir))
-            f.write('mkdir -p ~/{}\n'.format(args.outdir))
-            f.write('sudo dd if=/dev/null of=/proc/net/tcpprobe bs=256 &\n')
-            f.write('sudo dd if=/proc/net/tcpprobe of={}/tcpprobe.out bs=256 &\n'.format(args.outdir))
-            f.write(exc + '\n')
-            f.write('sudo killall dd\n')
-        sh.run('chmod +x remote.sh', shell=True)
-        sh.run('scp ./remote.sh 192.168.1.5:', shell=True)
+    with open('remote.sh', 'w') as f:
+        f.write('#!/bin/bash\n\n')
+        f.write('rm -rf ~/{}\n'.format(args.outdir))
+        f.write('mkdir -p ~/{}\n'.format(args.outdir))
+        f.write('sudo dd if=/dev/null of=/proc/net/tcpprobe bs=256 &\n')
+        f.write('sudo dd if=/proc/net/tcpprobe of={}/tcpprobe.out bs=256 &\n'.format(args.outdir))
+        f.write(exc + '\n')
+        f.write('sudo killall dd\n')
+    sh.run('chmod +x remote.sh', shell=True)
+    sh.run('scp ./remote.sh 192.168.1.5:', shell=True)
 
     sh.Popen('ssh 10.1.1.2 ~/remote.sh' , shell=True)
     sh.Popen('ssh 192.168.1.5 ~/remote.sh' , shell=True)
@@ -104,17 +91,11 @@ def local_script(args):
         args.samplerate,
         args.outdir,
     )
-    if not args.do_fct_experiment:
-        exc = '~/iperf/src/iperf -c {} -p 5000 --reverse -i 1 -P {} > {}/iperf-client.out'.format(
-            '192.168.1.5' if args.three_machines else '10.1.1.2',
-            args.conns,
-            args.outdir,
-        )
-    else:
-        exc = '~/bundler/scripts/empiricial-traffic-gen/bin/client -c ~/bundler/scripts/bundlerConfig -l {}/ -s {}'.format(
-            args.outdir,
-            args.seed,
-        )
+
+    exc = '~/bundler/scripts/empiricial-traffic-gen/bin/client -c ~/bundler/scripts/bundlerConfig -l {}/ -s {}'.format(
+        args.outdir,
+        args.seed,
+    )
 
     print(outbox)
     print(exc)
@@ -125,38 +106,20 @@ def local_script(args):
             f.write('sleep 1\n')
             f.write(outbox + ' &\n')
         f.write('sleep 1\n')
-        f.write('echo "starting iperf client: $(date)"\n')
+        f.write('echo "starting client: $(date)"\n')
         f.write(exc + '\n')
-        if args.cross_traffic == 'reqs':
-            f.write("~/bundler/scripts/empiricial-traffic-gen/bin/client -c ~/bundler/scripts/empiricial-traffic-gen/crossTrafficConfig -l {} -s 42\n".format(
-                args.outdir + "/cross/"
-            ))
 
     sh.run('chmod +x local.sh', shell=True)
     sh.run('rm -rf ./{}\n'.format(args.outdir), shell=True)
     sh.run('mkdir -p ./{}\n'.format(args.outdir), shell=True)
-    if args.cross_traffic is not None:
-        sh.run("mkdir -p {}/{}\n".format(args.outdir, "cross"), shell=True)
     mahimahi = 'mm-delay 25 mm-link --cbr 96M 96M --downlink-queue="droptail" --downlink-queue-args="packets=1200" --uplink-queue="droptail" --uplink-queue-args="packets=1200" --downlink-log={}/mahimahi.log ./local.sh'.format(args.outdir)
     sh.run(mahimahi, shell=True)
 
 
 def run_single_experiment(args):
-    if args.do_fct_experiment:
-        args.time = None
-    else:
-        args.load = None
-        args.reqs = None
-        args.seed = None
-        if args.time is None:
-            print('please give a time')
-            sys.exit(1)
-        if args.conns > 32:
-            print("are you sure? running 32 parallel iperf connections")
-            sys.exit(1)
-        if args.samplerate is None:
-            args.samplerate = 128
-    args.dynamic_samplerate = 'true' if args.dynamic_epoch else 'false'
+    if args.samplerate is None:
+        args.samplerate = 128
+    args.dynamic_samplerate = 'true'
     args.use_bundler = args.usebundler
     args.alg = algs[args.alg]
 
@@ -168,19 +131,13 @@ def run_single_experiment(args):
     for k in sorted(a):
         print(k, a[k])
 
-    if args.do_fct_experiment:
-        write_etg_config('bundlerConfig', args)
-    if args.cross_traffic == 'reqs':
-        write_etg_config('crossTrafficConfig', "12Mbps", 10, 1000)
+    write_etg_config('bundlerConfig', args)
     remote_script(args)
     local_script(args)
 
     sh.run('ssh 10.1.1.2 "grep "sch_bundle_inbox" /var/log/syslog > ~/{}/qdisc.log"'.format(args.outdir), shell=True)
     sh.run('scp 10.1.1.2:~/{0}/* ./{0}'.format(args.outdir), shell=True)
-    if args.three_machines:
-        sh.run('scp 192.168.1.5:~/{0}/* ./{0}'.format(args.outdir), shell=True)
-    if args.do_fct_experiment:
-        sh.run("mv ./bundlerConfig ./{}".format(args.outdir), shell=True)
+    sh.run("mv ./bundlerConfig ./{}".format(args.outdir), shell=True)
 
     kill_everything()
 
