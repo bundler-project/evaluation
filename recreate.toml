@@ -1,0 +1,61 @@
+[topology]
+    [topology.sender]
+        name = "pd1"
+        ifaces = [{dev = "em2", addr = "192.168.1.1"}]
+    [topology.inbox]
+        name = "pd6"
+        ifaces = [
+            {dev = "em2", addr = "192.168.1.6"},
+            {dev = "10gp1", addr = "10.1.1.6"},
+        ]
+        listen_port = 28316
+    [topology.outbox]
+        name = "pd5"
+        ifaces = [{dev = "10gp1", addr = "10.1.1.6"}]
+    [topology.receiver]
+        name = "pd5"
+        ifaces = [{dev = "10gp1", addr = "10.1.1.5"}]
+
+[parameters]
+initial_sample_rate = 128
+bg_port_start = 5000
+qdisc_buf_size = "15mbit"
+
+[structure]
+bundler_root = "~/bundler-project"
+etg_dir = "~/empirical-traffic-gen"
+etg_client = "bin/etgClient"
+etg_server = "run-multiple-server.sh"
+iperf_path = "~/iperf/src/iperf"
+inbox_target = "target/release/inbox"
+outbox_target = "target/release/outbox"
+
+[distributions]
+CAIDA_CDF = "~/bundler-project/evaluation/CAIDA_CDF"
+
+[ccp]
+    [ccp.copa]
+        repo = "https://github.com/akshayknarayan/ccp_copa.git"
+        branch = "rate_only"
+        commit = "latest"
+        language = "rust"
+        target = "target/debug/copa"
+        [ccp.copa.args]
+            delta_mode = "NoTCP"
+            default_delta = 0.125
+
+[experiment]
+seed      = [0, 17, 26, 28, 41, 62, 67, 68, 88, 99]
+sch       = ['sfq', 'fifo']
+alg       = ['copa']
+rate      = [96]
+rtt       = [50]
+bdp       = [3]
+bundle_traffic = [
+    {source = 'iperf', alg = 'cubic', flows = 1, length = 60}
+#example poisson : { source = 'poisson', conns = 200, reqs = 10000, alg = 'reno', backlogged = 1, dist = 'CAIDA_CDF', load = '7/8' }
+]
+cross_traffic = [
+    {source = 'iperf', alg = 'cubic', flows = 1, length = 60}
+]
+
