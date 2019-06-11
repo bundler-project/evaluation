@@ -280,6 +280,10 @@ def create_ssh_connections(config):
             conns[hostname] = ConnectionWrapper(hostname, nickname=role, dry=args.dry_run, verbose=args.verbose, interact=args.interact)
         machines[role] = conns[hostname]
 
+    localhost = ConnectionWrapper('localhost', nickname='self', dry=args.dry_run, verbose=args.verbose, interact=args.interact)
+    machines['self'] = localhost
+    conns['self'] = localhost
+
     return (conns, machines)
 
 def setup_networking(machines, config):
