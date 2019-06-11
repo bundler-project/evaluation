@@ -681,9 +681,6 @@ def prepare_directories(config, conns):
     config['etg_server_path'] = os.path.join(config['structure']['etg_dir'], config['structure']['etg_server'])
     config['parameters']['bg_port_end'] = config['parameters']['bg_port_start'] + 1000
 
-    if not os.path.exists(os.path.expanduser(config['distribution_dir'])):
-        fatal_warn("Could not find distribution_dir on local machine.")
-
     if os.path.exists(os.path.expanduser(config['experiment_dir'])):
         if not (config['args'].skip_existing or config['args'].overwrite_existing):
             fatal_warn("There are existing results for this experiment.\nYou must run this script with either --skip or --overwrite to specify how to proceed.")
