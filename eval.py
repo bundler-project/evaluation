@@ -274,14 +274,12 @@ def create_ssh_connections(config):
     machines = {}
     args = config['args']
     for (role, details) in config['topology'].items():
-        addr = details['name']
-        if not addr in conns:
-            agenda.subtask(addr)
-            conns[addr] = ConnectionWrapper(addr, nickname=role, dry=args.dry_run, verbose=args.verbose, interact=args.interact)
-        machines[role] = conns[addr]
-        if addr == socket.gethostname():
-            machines['self'] = conns[addr]
-            conns['self'] = conns[addr]
+        hostname = details['name']
+        if not hostname in conns:
+            agenda.subtask(hostname)
+            conns[hostname] = ConnectionWrapper(hostname, nickname=role, dry=args.dry_run, verbose=args.verbose, interact=args.interact)
+        machines[role] = conns[hostname]
+
     return (conns, machines)
 
 def setup_networking(machines, config):
