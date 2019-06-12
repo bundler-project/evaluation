@@ -27,8 +27,9 @@ etg_dir = "~/empirical-traffic-gen"
 etg_client = "bin/client"
 etg_server = "run-servers.py"
 iperf_path = "~/iperf/src/iperf"
-inbox_target = "target/release/inbox"
-outbox_target = "target/release/outbox"
+bundler_dir = "~/bundler"
+inbox_target = "target/debug/inbox"
+outbox_target = "target/debug/outbox"
 
 [distributions]
 CAIDA_CDF = "~/bundler-scripts/CAIDA_CDF"
@@ -45,8 +46,9 @@ CAIDA_CDF = "~/bundler-scripts/CAIDA_CDF"
             default_delta = 0.125
 
 [experiment]
-seed      = [0, 17, 26, 28, 41, 62, 67, 68, 88, 99]
-sch       = ['sfq', 'fifo']
+#seed      = [0, 17, 26, 28, 41, 62, 67, 68, 88, 99]
+seed      = [0]
+sch       = ['fifo']
 alg       = ['copa']
 rate      = [96]
 rtt       = [50]
@@ -58,4 +60,3 @@ bundle_traffic = [
 cross_traffic = [
     {source = 'iperf', alg = 'cubic', flows = 1, length = 60}
 ]
-

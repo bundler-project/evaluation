@@ -130,7 +130,7 @@ class ConnectionWrapper(Connection):
     def check_proc(self, proc_name, proc_out):
         res = self.run("pgrep {}".format(proc_name))
         if res.exited != 0:
-            fatal_warn('failed to find running process with name \"{}\"'.format(proc_name), exit=False)
+            fatal_warn('failed to find running process with name \"{}\" on {}'.format(proc_name, self.addr), exit=False)
             res = self.run('tail {}'.format(proc_out))
             if not self.verbose and res.exited == 0:
                 print(res.command)
@@ -410,10 +410,10 @@ def get_ccp_binary_path(config, alg):
         fatal_warn("Unknown language for {}: {}".format(alg, alg_config['language']))
 
 def get_inbox_binary(config):
-   return os.path.join(config['box_root'], config['structure']['inbox_target'])
+   return os.path.join(config['structure']['bundler_dir'], config['structure']['inbox_target'])
 
 def get_outbox_binary(config):
-   return os.path.join(config['box_root'], config['structure']['outbox_target'])
+   return os.path.join(config['structure']['bundler_dir'], config['structure']['outbox_target'])
 
 def check_etg(config, node):
     if not node.file_exists(config['structure']['etg_dir']):
@@ -433,7 +433,7 @@ def check_etg(config, node):
         if not node.file_exists(remote_path):
             node.put(os.path.expanduser(path), remote=config['distribution_dir'])
 
-    node.run("chmod +x {}".format(os.path.join(config['structure']['etg_dir'], 'run-multiple-server.sh')))
+    node.run("chmod +x {}".format(os.path.join(config['structure']['etg_dir'], config['structure']['etg_server'])))
 
 def check_sender(config, sender):
 
@@ -454,7 +454,7 @@ def check_inbox(config, inbox):
     if not inbox.file_exists(inbox_binary):
         expect(
             inbox.run("make -C {} {}".format(
-                config['box_root'],
+                config['structure']['bundler_dir'],
                 'release' if 'release' in inbox_binary else ''
             )),
             "Inbox failed to build bundler repository"
@@ -609,8 +609,7 @@ sleep 1
 
 
 def start_inbox(config, inbox, qtype, q_buffer_size):
-    if config['args'].verbose:
-        agenda.subtask("Starting inbox")
+    agenda.subtask("Starting inbox")
 
     inbox_out = os.path.join(config['iteration_dir'], "inbox.out")
 
@@ -971,9 +970,9 @@ if __name__ == "__main__":
         logging.basicConfig(level=logging.DEBUG)
     conns, machines = create_ssh_connections(config)
     if not args.skip_setup:
-        start_interacting(machines)
+        #start_interacting(machines)
         setup_networking(machines, config)
-        stop_interacting(machines)
+        #stop_interacting(machines)
 
     agenda.task("Preparing result directories")
     prepare_directories(config, conns)
