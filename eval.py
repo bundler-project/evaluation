@@ -915,7 +915,7 @@ def start_tcpprobe(config, sender):
 def create_traffic_config(traffic, seed):
     if traffic['source'] == 'iperf':
         return IperfTraffic(
-            port=5000,
+            port=traffic['port'],
             report_interval=1,
             length=traffic['length'],
             num_flows=traffic['flows'],
