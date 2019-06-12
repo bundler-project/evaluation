@@ -255,18 +255,21 @@ def check_config(config):
     sources = ['iperf', 'poisson']
     for traffic_type in ['bundle_traffic', 'cross_traffic']:
         for traffic in config['experiment'][traffic_type]:
-            assert traffic['source'] in sources, "{} traffic source must be one of ({})".format(traffic_type, "|".join(sources))
-            if traffic['source'] == 'iperf':
-                assert traffic['alg'], "{} missing 'alg' (str)".format(traffic_type)
-                assert traffic['flows'], "{} missing 'flows' (int)".format(traffic_type)
-                assert traffic['length'], "{} missing 'length' (int)".format(traffic_type)
-            if traffic['source'] == 'poisson':
-                assert traffic['conns'], "{} missing 'conns' (int)".format(traffic_type)
-                assert traffic['reqs'], "{} missing 'reqs' (int)".format(traffic_type)
-                assert traffic['dist'], "{} missing 'dist' (str)".format(traffic_type)
-                assert traffic['load'], "{} missing 'load' (str)".format(traffic_type)
-                assert traffic['alg'], "{} missing 'alg' (str)".format(traffic_type)
-                assert traffic['backlogged'], "{} missing 'backlogged' (int)".format(traffic_type)
+            for t in traffic:
+                assert t['source'] in sources, "{} traffic source must be one of ({})".format(traffic_type, "|".join(sources))
+                if 'start_delay' not in t:
+                    t['start_delay'] = 0
+                if t['source'] == 'iperf':
+                    assert t['alg'], "{} missing 'alg' (str)".format(traffic_type)
+                    assert t['flows'], "{} missing 'flows' (int)".format(traffic_type)
+                    assert t['length'], "{} missing 'length' (int)".format(traffic_type)
+                if t['source'] == 'poisson':
+                    assert t['conns'], "{} missing 'conns' (int)".format(traffic_type)
+                    assert t['reqs'], "{} missing 'reqs' (int)".format(traffic_type)
+                    assert t['dist'], "{} missing 'dist' (str)".format(traffic_type)
+                    assert t['load'], "{} missing 'load' (str)".format(traffic_type)
+                    assert t['alg'], "{} missing 'alg' (str)".format(traffic_type)
+                    assert t['backlogged'], "{} missing 'backlogged' (int)".format(traffic_type)
 
 def create_ssh_connections(config):
     agenda.task("Creating SSH connections")
@@ -555,14 +558,19 @@ set -x
 {outbox_cmd} > {outbox_output} 2> {outbox_output} &
 
 sleep 1
-{cross_client}
 
-sleep 1
-{bundle_client}""".format(
+pids=()
+{cross_clients}
+{bundle_clients}
+
+for pid in ${{pids[*]}}; do
+    wait $pid
+done
+""".format(
         outbox_cmd=outbox_cmd,
         outbox_output=os.path.join(config['iteration_dir'], 'outbox.out'),
-        cross_client=cross_client + (' &' if cross_client else ''),
-        bundle_client=bundle_client,
+        cross_clients='\n'.join(["({}) &\npids+=($!)".format(c) for c in cross_client]),
+        bundle_clients='\n'.join(["({}) &\npids+=($!)".format(c) for c in bundle_client]),
     ))
 
     mm_inner_path = os.path.join(config['iteration_dir'], 'mm_inner.sh')
@@ -730,28 +738,34 @@ def prepare_iteration_dir(config, conns):
         )
 
 
-IperfTraffic = namedtuple('IperfTraffic', ['port', 'report_interval', 'length', 'num_flows', 'alg'])
-PoissonTraffic = namedtuple('PoissonTraffic', ['num_conns', 'num_backlogged', 'num_reqs', 'distribution', 'fanout', 'load', 'congalg', "seed"])
+IperfTraffic = namedtuple('IperfTraffic', ['port', 'report_interval', 'length', 'num_flows', 'alg', 'start_delay'])
+PoissonTraffic = namedtuple('PoissonTraffic', ['num_conns', 'num_backlogged', 'num_reqs', 'distribution', 'fanout', 'load', 'congalg', "seed", 'start_delay'])
 MahimahiConfig = namedtuple('MahimahiConfig', ['rtt', 'rate', 'ecmp', 'num_bdp'])
+
+
+def start_multiple_client(config, node, traffic, execute=True):
+    for t in traffic:
+        yield start_client(config, node, t, execute)
 
 def start_client(config, node, traffic, execute=True):
     if not traffic:
         return None if execute else ''
     if isinstance(traffic, IperfTraffic):
         agenda.subtask("Start iperf client ({})".format(traffic))
-        iperf_out = os.path.join(config['iteration_dir'], "iperf_client.out")
+        iperf_out = os.path.join(config['iteration_dir'], "iperf_client_{}.out".format(traffic.port))
         if traffic.port < config['parameters']['bg_port_start'] or traffic.port > config['parameters']['bg_port_end']:
             fatal_warn("Traffic ({}) is outside of bundle capture region! ({}-{})".format(
                 traffic.port, config['parameters']['bg_port_start'], config['parameters']['bg_port_end']
             ))
-        cmd = "{path} -c {ip} -p {port} --reverse -i {report_interval} -t {length} -P {num_flows} -Z {alg}".format(
+        cmd = "sleep {delay} && {path} -c {ip} -p {port} --reverse -i {report_interval} -t {length} -P {num_flows} -Z {alg}".format(
             path=config['structure']['iperf_path'],
             ip=config['topology']['sender']['ifaces'][0]['addr'],
             port=traffic.port,
             report_interval=traffic.report_interval,
             length=traffic.length,
             num_flows=traffic.num_flows,
-            alg=traffic.alg
+            alg=traffic.alg,
+            delay=traffic.start_delay
         )
 
         config['iteration_outputs'].append((node, iperf_out))
@@ -766,7 +780,7 @@ def start_client(config, node, traffic, execute=True):
                 "Failed to start iperf client on {}".format(node.addr)
             )
         else:
-            return cmd
+            return cmd + " > {}".format(iperf_out)
     elif isinstance(traffic, PoissonTraffic):
         if config['args'].verbose:
             agenda.subtask("Create ETG config file")
@@ -788,12 +802,13 @@ def start_client(config, node, traffic, execute=True):
         etg_out = os.path.join(config['iteration_dir'], "{}".format(i))
 
         # NOTE: using cd + relative paths instead of absolute because etg has a buffer size of 80 for filenames
-        cmd = "cd {wd} && {path} -c {config} -l {out_prefix} -s {seed}".format(
+        cmd = "sleep {delay} && cd {wd} && {path} -c {config} -l {out_prefix} -s {seed}".format(
             wd=config['iteration_dir'],
             path=config['etg_client_path'],
             config=os.path.basename(etg_config_path),
             out_prefix=str(i),
-            seed=traffic.seed
+            seed=traffic.seed,
+            delay=traffic.start_delay
         )
 
         config['iteration_outputs'].append((node, etg_out + "_flows.out"))
@@ -814,12 +829,16 @@ def start_client(config, node, traffic, execute=True):
     else:
         fatal_warn("Unknown traffic type; tailed to start client")
 
+def start_multiple_server(config, node, traffic, execute=True):
+    for t in traffic:
+        yield start_server(config, node, t, execute)
+
 def start_server(config, node, traffic, execute=True):
     if not traffic:
         return None if execute else ''
     if isinstance(traffic, IperfTraffic):
         agenda.subtask("Start iperf server ({})".format(traffic))
-        iperf_out = os.path.join(config['iteration_dir'], "iperf_server.out")
+        iperf_out = os.path.join(config['iteration_dir'], "iperf_server_{}.out".format(traffic.port))
         expect(
             node.run(
                 "{path} -s -p {port} --reverse -i {report_interval} -t {length} -P {num_flows}".format(
@@ -913,24 +932,27 @@ def start_tcpprobe(config, sender):
     return tcpprobe_out
 
 def create_traffic_config(traffic, seed):
-    if traffic['source'] == 'iperf':
-        return IperfTraffic(
-            port=traffic['port'],
-            report_interval=1,
-            length=traffic['length'],
-            num_flows=traffic['flows'],
-            alg=traffic['alg']
-        )
-    elif traffic['source'] == 'poisson':
-        return PoissonTraffic(
-            num_conns=traffic['conns'],
-            num_backlogged=traffic['backlogged'],
-            num_reqs=traffic['reqs'],
-            distribution=traffic['dist'],
-            congalg=traffic['alg'],
-            seed=exp.seed,
-            load=(int(eval(traffic['load'])) * exp.rate),
-            fanout='1 1000'
+    for t in traffic:
+        if t['source'] == 'iperf':
+            yield IperfTraffic(
+                port=t['port'],
+                report_interval=1,
+                length=t['length'],
+                num_flows=t['flows'],
+                alg=t['alg'],
+                start_delay=t['start_delay']
+            )
+        elif t['source'] == 'poisson':
+            yield PoissonTraffic(
+                num_conns=t['conns'],
+                num_backlogged=t['backlogged'],
+                num_reqs=t['reqs'],
+                distribution=t['dist'],
+                congalg=t['alg'],
+                seed=exp.seed,
+                load=(int(eval(t['load'])) * exp.rate),
+                start_delay=t['start_delay'],
+                fanout='1 100'
         )
 
 def traffic_str(traffic):
@@ -1008,8 +1030,8 @@ if __name__ == "__main__":
 
         #TODO get exact system time that each program starts
 
-        bundle_traffic = create_traffic_config(exp.bundle_traffic, exp)
-        cross_traffic = create_traffic_config(exp.cross_traffic, exp)
+        bundle_traffic = list(create_traffic_config(exp.bundle_traffic, exp))
+        cross_traffic = list(create_traffic_config(exp.cross_traffic, exp))
         env = MahimahiConfig(rate=exp.rate, rtt=exp.rtt, num_bdp=exp.bdp, ecmp=None)
 
         iteration_name = "{sch}_{alg}_{rate}_{rtt}/b={bundle}_c={cross}/{seed}".format(sch=exp.sch, alg=exp.alg, rate=exp.rate, rtt=exp.rtt, seed=exp.seed, bundle=traffic_str(bundle_traffic), cross=traffic_str(cross_traffic))
@@ -1040,19 +1062,21 @@ if __name__ == "__main__":
             #TODO figure out how to check for and kill dd, it's a substring in other process names
             tcpprobe_out = start_tcpprobe(config, machines['sender'])
 
-        bundle_out = start_server(config, machines['sender'], bundle_traffic)
+        bundle_out = list(start_multiple_server(config, machines['sender'], bundle_traffic))
         if cross_traffic:
-            cross_out = start_server(config, machines['sender'], cross_traffic)
+            cross_out = list(start_multiple_server(config, machines['sender'], cross_traffic))
 
-        bundle_client = start_client(config, machines['receiver'], bundle_traffic, execute=False)
-        cross_client = start_client(config, machines['receiver'], cross_traffic, execute=False)
+        bundle_client = list(start_multiple_client(config, machines['receiver'], bundle_traffic, execute=False))
+        cross_client = list(start_multiple_client(config, machines['receiver'], cross_traffic, execute=False))
         start_outbox(config, machines['outbox'], emulation_env=env, bundle_client=bundle_client, cross_client=cross_client)
 
         agenda.subtask("collecting results")
         for (m, fname) in config['iteration_outputs']:
             if m != machines['self']:
-                m.get(os.path.expanduser(fname), local=os.path.expanduser(os.path.join(config['iteration_dir'], os.path.basename(fname))))
-
+                try:
+                    m.get(os.path.expanduser(fname), local=os.path.expanduser(os.path.join(config['iteration_dir'], os.path.basename(fname))))
+                except:
+                    warn("could not get file {}".format(fname))
 
 
     ### if simulation, otherwise dont need to put outbox thing in a separate script
