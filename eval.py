@@ -629,7 +629,7 @@ def start_inbox(config, inbox, qtype, q_buffer_size):
     )
 
     if not config['args'].dry_run:
-        time.sleep(1)
+        time.sleep(2)
     inbox.check_proc('inbox', inbox_out)
     inbox.check_file('Wait for CCP to install datapath program', inbox_out)
 
@@ -970,9 +970,7 @@ if __name__ == "__main__":
         logging.basicConfig(level=logging.DEBUG)
     conns, machines = create_ssh_connections(config)
     if not args.skip_setup:
-        #start_interacting(machines)
         setup_networking(machines, config)
-        #stop_interacting(machines)
 
     agenda.task("Preparing result directories")
     prepare_directories(config, conns)
