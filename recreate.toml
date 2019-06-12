@@ -54,10 +54,10 @@ rate      = [96]
 rtt       = [50]
 bdp       = [3]
 bundle_traffic = [[
-    {source = 'iperf', alg = 'cubic', flows = 1, length = 10, port = 5000, start_delay = 0}
+    {source = 'iperf', alg = 'cubic', flows = 1, length = 30, port = 5000, start_delay = 0}
 #example poisson : { source = 'poisson', conns = 200, reqs = 10000, alg = 'reno', backlogged = 1, dist = 'CAIDA_CDF', load = '7/8' }
 ]]
 cross_traffic = [[
-    {source = 'iperf', alg = 'cubic', flows = 1, length = 10, port = 5001, start_delay = 4}
+    {source = 'iperf', alg = 'cubic', flows = 1, length = 10, port = 5001, start_delay = 20}
     {source = 'iperf', alg = 'cubic', flows = 1, length = 10, port = 5002}
 ]]
