@@ -278,7 +278,7 @@ def create_ssh_connections(config):
     args = config['args']
     for (role, details) in config['topology'].items():
         hostname = details['name']
-        if not hostname in conns:
+        if role is not "local" and not hostname in conns:
             agenda.subtask(hostname)
             conns[hostname] = ConnectionWrapper(hostname, nickname=role, dry=args.dry_run, verbose=args.verbose, interact=args.interact)
         machines[role] = conns[hostname]
@@ -862,7 +862,6 @@ def start_server(config, node, traffic, execute=True):
         config['iteration_outputs'].append((node, iperf_out))
 
         return iperf_out
-
     elif isinstance(traffic, PoissonTraffic):
         agenda.subtask("Start poisson server ({})".format(traffic))
 
@@ -1054,6 +1053,7 @@ if __name__ == "__main__":
 
         ##### RUN EXPERIMENT
 
+        start = time.time()
         inbox_out = start_inbox(config, machines['inbox'], exp.sch, config['parameters']['qdisc_buf_size'])
         ccp_out = start_ccp(config, machines['inbox'], exp.alg)
         machines['inbox'].check_file('Inbox ready', inbox_out)
@@ -1070,9 +1070,12 @@ if __name__ == "__main__":
         cross_client = list(start_multiple_client(config, machines['receiver'], cross_traffic, execute=False))
         start_outbox(config, machines['outbox'], emulation_env=env, bundle_client=bundle_client, cross_client=cross_client)
 
+        elapsed = time.time() - start
+        agenda.subtask("Ran for {} seconds".format(elapsed))
+
         agenda.subtask("collecting results")
         for (m, fname) in config['iteration_outputs']:
-            if m != machines['self']:
+            if m != machines['local']:
                 try:
                     m.get(os.path.expanduser(fname), local=os.path.expanduser(os.path.join(config['iteration_dir'], os.path.basename(fname))))
                 except:
