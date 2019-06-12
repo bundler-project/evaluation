@@ -1,19 +1,19 @@
 [topology]
     [topology.sender]
-        name = "pd1"
+        name = "pd1.csail.mit.edu"
         ifaces = [{dev = "em2", addr = "192.168.1.1"}]
     [topology.inbox]
-        name = "pd6"
+        name = "pd6.csail.mit.edu"
         ifaces = [
             {dev = "em2", addr = "192.168.1.6"},
             {dev = "10gp1", addr = "10.1.1.6"},
         ]
         listen_port = 28316
     [topology.outbox]
-        name = "pd5"
+        name = "pd5.csail.mit.edu"
         ifaces = [{dev = "10gp1", addr = "10.1.1.6"}]
     [topology.receiver]
-        name = "pd5"
+        name = "pd5.csail.mit.edu"
         ifaces = [{dev = "10gp1", addr = "10.1.1.5"}]
 
 [parameters]
@@ -22,16 +22,16 @@ bg_port_start = 5000
 qdisc_buf_size = "15mbit"
 
 [structure]
-bundler_root = "~/bundler-project"
+bundler_root = "~/bundler-scripts"
 etg_dir = "~/empirical-traffic-gen"
-etg_client = "bin/etgClient"
-etg_server = "run-multiple-server.sh"
+etg_client = "bin/client"
+etg_server = "run-servers.py"
 iperf_path = "~/iperf/src/iperf"
 inbox_target = "target/release/inbox"
 outbox_target = "target/release/outbox"
 
 [distributions]
-CAIDA_CDF = "~/bundler-project/evaluation/CAIDA_CDF"
+CAIDA_CDF = "~/bundler-scripts/CAIDA_CDF"
 
 [ccp]
     [ccp.copa]

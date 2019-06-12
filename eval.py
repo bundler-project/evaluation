@@ -1,5 +1,5 @@
 import sys
-import toml 
+import toml
 from fabric import Connection, Result
 import argparse
 import agenda
@@ -17,7 +17,7 @@ import random
 ###################################################################################################
 parser = argparse.ArgumentParser()
 parser.add_argument('config')
-parser.add_argument('--dry-run', action='store_true', dest='dry_run', 
+parser.add_argument('--dry-run', action='store_true', dest='dry_run',
         help="if supplied, print commands but don't execute them, implies verbose")
 parser.add_argument('--verbose', '-v', action='count', dest='verbose',
         help="if supplied, print all commands and their outputs")
@@ -31,7 +31,7 @@ parser.add_argument('--overwrite-existing', action='store_true', dest='overwrite
         help="if supplied, if results already exist for a given experiment, the experiment will be re-run and results overwritten, be careful when supplying this!")
 parser.add_argument('--skip-existing', action='store_true', dest='skip_existing',
         help="if supplied, if results already exist for a given experiment, that experiment will be skipped and results preserved, good for finishing an incomplete experiment")
-parser.add_argument('--tcpprobe', action='store_true', dest='tcpprobe', 
+parser.add_argument('--tcpprobe', action='store_true', dest='tcpprobe',
         help="if supplied, run tcpprobe at the sender")
 ###################################################################################################
 
@@ -55,14 +55,14 @@ class ConnectionWrapper(Connection):
 
         # Start the ssh connection
         super().open()
-    
+
     """
     Run a command on the remote machine
 
-    verbose    : if true, print the command before running it, and any output it produces 
+    verbose    : if true, print the command before running it, and any output it produces
                  (if not redirected)
                  if false, capture anything produced in stdout and save in result (res.stdout)
-    background : if true, start the process in the background via nohup. 
+    background : if true, start the process in the background via nohup.
                  if output is not directed to a file or pty=True, this won't work
     stdin      : string of filename for stdin (default /dev/stdin as expected)
     stdout     : ""
@@ -71,7 +71,7 @@ class ConnectionWrapper(Connection):
     wd         : cd into this directory before running the given command
     sudo       : if true, execute this command with sudo (done AFTER changing to wd)
 
-    returns result struct 
+    returns result struct
         .exited = return code
         .stdout = stdout string (if not redirected to a file)
         .stderr = stderr string (if not redirected to a file)
@@ -101,7 +101,7 @@ class ConnectionWrapper(Connection):
         )
         if sudo and ';' in cmd:
             full_cmd += "\""
-    
+
         # Prepare arguments for invoke/fabric
         if background:
             pty=False
@@ -390,7 +390,7 @@ def kill_leftover_procs(config, conns):
             fatal_warn("Failed to kill all procs on {}.".format(conn.addr))
 
     # True = some processes remain, therefore there *are* zombies, so we return false
-    return (not res.exited) 
+    return (not res.exited)
 
 def get_ccp_alg_dir(config, alg):
     alg_config = config['ccp'][alg]
@@ -562,7 +562,7 @@ sleep 1
         outbox_cmd=outbox_cmd,
         outbox_output=os.path.join(config['iteration_dir'], 'outbox.out'),
         cross_client=cross_client + (' &' if cross_client else ''),
-        bundle_client=bundle_client, 
+        bundle_client=bundle_client,
     ))
 
     mm_inner_path = os.path.join(config['iteration_dir'], 'mm_inner.sh')
@@ -688,15 +688,18 @@ def prepare_directories(config, conns):
             fatal_warn("There are existing results for this experiment.\nYou must run this script with either --skip or --overwrite to specify how to proceed.")
 
     if config['args'].overwrite_existing:
-        warn("Overwrite existing results set to TRUE. Are you sure you want to continue? (y/n)", exit=False)
-        got = input()
-        if got.strip() != 'y':
-            sys.exit(1)
+        while True:
+            warn("Overwrite existing results set to TRUE. Are you sure you want to continue? (y/n)", exit=False)
+            got = input().strip()
+            if got == 'y':
+                break
+            elif got == 'n':
+                sys.exit(1)
 
     for (addr, conn) in conns.items():
         if config['args'].verbose:
             agenda.subtask(addr)
-        
+
         if config['args'].overwrite_existing:
            expect(
                conn.run("rm -rf {}".format(config['experiment_dir'])),
@@ -704,11 +707,11 @@ def prepare_directories(config, conns):
            )
 
         expect(
-            conn.run("mkdir -p {}".format(config['experiment_dir'])), 
+            conn.run("mkdir -p {}".format(config['experiment_dir'])),
             "Failed to create experiment directory {}".format(config['experiment_dir'])
         )
         expect(
-            conn.run("mkdir -p {}".format(config['ccp_dir'])), 
+            conn.run("mkdir -p {}".format(config['ccp_dir'])),
             "Failed to create experiment directory {}".format(config['experiment_dir'])
         )
 
@@ -723,7 +726,7 @@ def prepare_iteration_dir(config, conns):
     iteration_dirs.add(config['iteration_dir'])
     for (addr, conn) in conns.items():
         expect(
-            conn.run("mkdir -p {}".format(config['iteration_dir'])), 
+            conn.run("mkdir -p {}".format(config['iteration_dir'])),
             "Failed to create iteration directory {}".format(config['iteration_dir'])
         )
 
@@ -881,7 +884,7 @@ def start_server(config, node, traffic, execute=True):
         config['iteration_outputs'].append((node, etg_out))
 
         return etg_out
-            
+
     else:
         fatal_warn("Unknown traffic type; tailed to start client")
 
@@ -895,12 +898,12 @@ def start_tcpprobe(config, sender):
         sender.run("dd if=/dev/null of=/proc/net/tcpprobe bs=256", sudo=True, background=True),
         "Sender failed to clear tcpprobe buffer"
     )
-    
+
     tcpprobe_out = os.path.join(config['iteration_dir'], 'tcpprobe.out')
     expect(
         sender.run(
             "dd if=/proc/net/tcpprobe of={} bs=256".format(tcpprobe_out),
-            sudo=True, 
+            sudo=True,
             background=True
         ),
         "Sender failed to start tcpprobe"
@@ -990,12 +993,12 @@ if __name__ == "__main__":
     ExperimentConfig = namedtuple('ExperimentConfig', list(exp_args.keys()))
     axes = list(exp_args.values())
     ps = list(itertools.product(*axes))
-    exps = [ExperimentConfig(*p) for p in ps] 
+    exps = [ExperimentConfig(*p) for p in ps]
     random.shuffle(exps)
     total_exps = len(exps)
 
     for i,exp in enumerate(exps):
-        
+
         if exp.alg == "nobundler" and exp.sch != "fifo":
             agenda.subtask("skipping...")
             continue
@@ -1047,14 +1050,14 @@ if __name__ == "__main__":
         bundle_client = start_client(config, machines['receiver'], bundle_traffic, execute=False)
         cross_client = start_client(config, machines['receiver'], cross_traffic, execute=False)
         start_outbox(config, machines['outbox'], emulation_env=env, bundle_client=bundle_client, cross_client=cross_client)
-        
+
         agenda.subtask("collecting results")
         for (m, fname) in config['iteration_outputs']:
             if m != machines['self']:
                 m.get(os.path.expanduser(fname), local=os.path.expanduser(os.path.join(config['iteration_dir'], os.path.basename(fname))))
 
 
- 
+
     ### if simulation, otherwise dont need to put outbox thing in a separate script
 
     ###################################################################################################
