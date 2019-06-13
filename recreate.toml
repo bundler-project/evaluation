@@ -71,6 +71,6 @@ bundle_traffic = [[
 #example poisson : { source = 'poisson', conns = 200, reqs = 10000, alg = 'reno', backlogged = 1, dist = 'CAIDA_CDF', load = '7/8' }
 ]]
 cross_traffic = [[
-    {source = 'iperf', alg = 'cubic', flows = 1, length = 50, port = 5001, start_delay = 10}
+    {source = 'iperf', alg = 'cubic', flows = 1, length = 50, port = 8001, start_delay = 10}
     #{source = 'iperf', alg = 'cubic', flows = 1, length = 10, port = 5002}
 ]]

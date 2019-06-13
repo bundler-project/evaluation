@@ -743,23 +743,28 @@ PoissonTraffic = namedtuple('PoissonTraffic', ['num_conns', 'num_backlogged', 'n
 MahimahiConfig = namedtuple('MahimahiConfig', ['rtt', 'rate', 'ecmp', 'num_bdp'])
 
 
-def start_multiple_client(config, node, traffic, execute=True):
+def start_multiple_client(config, node, traffic, in_bundler, execute=True):
     for t in traffic:
-        yield start_client(config, node, t, execute)
+        yield start_client(config, node, t, in_bundler, execute)
 
-def start_client(config, node, traffic, execute=True):
+def start_client(config, node, traffic, in_bundler, execute=True):
     if not traffic:
         return None if execute else ''
     if isinstance(traffic, IperfTraffic):
         agenda.subtask("Start iperf client ({})".format(traffic))
         iperf_out = os.path.join(config['iteration_dir'], "iperf_client_{}.out".format(traffic.port))
-        if traffic.port < config['parameters']['bg_port_start'] or traffic.port > config['parameters']['bg_port_end']:
-            fatal_warn("Traffic ({}) is outside of bundle capture region! ({}-{})".format(
+        if in_bundler and (traffic.port < config['parameters']['bg_port_start'] or traffic.port > config['parameters']['bg_port_end']):
+            fatal_warn("Bundle traffic ({}) is outside of bundle capture region! ({}-{})".format(
                 traffic.port, config['parameters']['bg_port_start'], config['parameters']['bg_port_end']
             ))
+        elif not in_bundler and traffic.port > config['parameters']['bg_port_start'] and traffic.port < config['parameters']['bg_port_end']:
+            fatal_warn("Cross traffic ({}) is in bundle capture region! ({}-{})".format(
+                traffic.port, config['parameters']['bg_port_start'], config['parameters']['bg_port_end']
+            ))
+
         cmd = "sleep {delay} && {path} -c {ip} -p {port} --reverse -i {report_interval} -t {length} -P {num_flows} -Z {alg}".format(
             path=config['structure']['iperf_path'],
-            ip=config['topology']['sender']['ifaces'][0]['addr'],
+            ip=config['topology']['sender']['ifaces'][0]['addr'] if in_bundler else '$MAHIMAHI_BASE',
             port=traffic.port,
             report_interval=traffic.report_interval,
             length=traffic.length,
@@ -1064,14 +1069,15 @@ if __name__ == "__main__":
 
         bundle_out = list(start_multiple_server(config, machines['sender'], bundle_traffic))
         if cross_traffic:
-            cross_out = list(start_multiple_server(config, machines['sender'], cross_traffic))
+            cross_out = list(start_multiple_server(config, machines['receiver'], cross_traffic))
 
-        bundle_client = list(start_multiple_client(config, machines['receiver'], bundle_traffic, execute=False))
-        cross_client = list(start_multiple_client(config, machines['receiver'], cross_traffic, execute=False))
+        bundle_client = list(start_multiple_client(config, machines['receiver'], bundle_traffic, True, execute=False))
+        cross_client = list(start_multiple_client(config, machines['receiver'], cross_traffic, False, execute=False))
         start_outbox(config, machines['outbox'], emulation_env=env, bundle_client=bundle_client, cross_client=cross_client)
 
         elapsed = time.time() - start
         agenda.subtask("Ran for {} seconds".format(elapsed))
+        kill_leftover_procs(config, conns)
 
         agenda.subtask("collecting results")
         for (m, fname) in config['iteration_outputs']:
