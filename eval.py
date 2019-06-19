@@ -447,6 +447,56 @@ def check_sender(config, sender):
     agenda.subtask("empirical traffic generator (sender)")
     check_etg(config, sender)
 
+def check_ccp_alg(config, node):
+    for (alg, details) in config['ccp'].items():
+        agenda.subtask(alg)
+        alg_dir = get_ccp_alg_dir(config, alg)
+        if not node.file_exists(alg_dir):
+            expect(
+                node.run("git clone {} {}".format(details['repo'], alg_dir)),
+                "node failed to clone {}".format(alg)
+            )
+        branch = node.run("git -C {} rev-parse --abbrev-ref HEAD".format(alg_dir)).stdout.strip()
+        if branch != details['branch']:
+            expect(
+                node.run("git -C {} checkout {}".format(alg_dir, details['branch'])),
+                "node failed to checkout branch {} of {}".format(details['branch'], alg)
+            )
+
+        commit = node.run("git -C {} rev-parse HEAD".format(alg_dir)).stdout.strip()
+        should_recompile = False
+        if not details['commit'] in commit:
+            pull = expect(
+                node.run("git -C {} pull".format(alg_dir)),
+                "node failed to pull latest code for {}".format(alg)
+            ).stdout.strip()
+            if details['commit'] == 'latest':
+                if not 'Already up-to-date.' in pull:
+                    should_recompile = True
+            else:
+                expect(
+                    node.run("git -C {} checkout {}".format(alg_dir, details['commit'])),
+                    "node failed to checkout commit {} of {}".format(details['commit'], alg)
+                )
+                should_recompile = True
+
+        if details['language'] == 'rust':
+            ccp_binary = get_ccp_binary_path(config, alg)
+            if not node.file_exists(ccp_binary):
+                print("could not find ccp binary")
+                should_recompile = True
+
+            if should_recompile:
+                new_commit = node.run("git -C {} rev-parse HEAD".format(alg_dir)).stdout.strip()
+                if commit.strip() != new_commit.strip():
+                    print("updated {} -> {}".format(alg, commit[:6], new_commit[:6]))
+
+                agenda.subtask("compiling ccp algorithm")
+                expect(
+                    node.run("~/.cargo/bin/cargo build {}".format('--release' if 'release' in ccp_binary else ''), wd=alg_dir),
+                    "node failed to build {}".format(alg)
+                )
+
 def check_inbox(config, inbox):
     agenda.subtask("inbox")
 
@@ -460,58 +510,9 @@ def check_inbox(config, inbox):
             "Inbox failed to build bundler repository"
         )
 
-
-    for (alg, details) in config['ccp'].items():
-        agenda.subtask(alg)
-        alg_dir = get_ccp_alg_dir(config, alg)
-        if not inbox.file_exists(alg_dir):
-            expect(
-                inbox.run("git clone {} {}".format(details['repo'], alg_dir)),
-                "Inbox failed to clone {}".format(alg)
-            )
-        branch = inbox.run("git -C {} rev-parse --abbrev-ref HEAD".format(alg_dir)).stdout.strip()
-        if branch != details['branch']:
-            expect(
-                inbox.run("git -C {} checkout {}".format(alg_dir, details['branch'])),
-                "Inbox failed to checkout branch {} of {}".format(details['branch'], alg)
-            )
-
-        commit = inbox.run("git -C {} rev-parse HEAD".format(alg_dir)).stdout.strip()
-        should_recompile = False
-        if not details['commit'] in commit:
-            pull = expect(
-                inbox.run("git -C {} pull".format(alg_dir)),
-                "Inbox failed to pull latest code for {}".format(alg)
-            ).stdout.strip()
-            if details['commit'] == 'latest':
-                if not 'Already up-to-date.' in pull:
-                    should_recompile = True
-            else:
-                expect(
-                    inbox.run("git -C {} checkout {}".format(alg_dir, details['commit'])),
-                    "Inbox failed to checkout commit {} of {}".format(details['commit'], alg)
-                )
-                should_recompile = True
-
-        if details['language'] == 'rust':
-            ccp_binary = get_ccp_binary_path(config, alg)
-            if not inbox.file_exists(ccp_binary):
-                print("could not find ccp binary")
-                should_recompile = True
-
-            if should_recompile:
-                new_commit = inbox.run("git -C {} rev-parse HEAD".format(alg_dir)).stdout.strip()
-                if commit.strip() != new_commit.strip():
-                    print("updated {} -> {}".format(alg, commit[:6], new_commit[:6]))
-
-                print("compiling...")
-                expect(
-                    machines['inbox'].run("~/.cargo/bin/cargo build {}".format('--release' if 'release' in ccp_binary else ''), wd=alg_dir),
-                    "Inbox failed to build {}".format(alg)
-                )
+    check_ccp_alg(config, inbox)
 
 def check_outbox(config, outbox):
-
     agenda.subtask("outbox")
 
     outbox_binary = get_outbox_binary(config)
@@ -525,7 +526,6 @@ def check_outbox(config, outbox):
         )
 
 def check_receiver(config, receiver):
-
     agenda.subtask("mahimahi (receiver)")
     if not receiver.prog_exists("mm-delay"):
         fatal_warn("Receiver does not have mahimahi installed.")
@@ -535,8 +535,10 @@ def check_receiver(config, receiver):
         fatal_warn("Unable to find reverse iperf at {} on the receiver machine. Make sure it exists and is compiled.".format(config['structure']['iperf_path']))
 
     agenda.subtask("empirical traffic generator (receiver)")
-
     check_etg(config, receiver)
+
+    agenda.subtask("CCP (receiver)")
+    check_ccp_alg(config, receiver)
 
 def start_outbox(config, outbox, emulation_env=None, bundle_client=None, cross_client=None):
     outbox_cmd = "sudo {path} --filter \"{pcap_filter}\" --iface {iface} --inbox {inbox_addr} --sample_rate {sample_rate} {extra}".format(
@@ -655,7 +657,7 @@ def start_ccp(config, inbox, alg):
     for (arg, val) in config['ccp'][alg]['args'].items():
         alg_args.append("--{}={}".format(arg, val))
 
-    res = machines['inbox'].run(
+    expect(machines['inbox'].run(
         "{} --ipc=unix {}".format(
             ccp_binary,
             " ".join(alg_args)
@@ -664,7 +666,7 @@ def start_ccp(config, inbox, alg):
         background=True,
         stdout=ccp_out,
         stderr=ccp_out,
-    )
+    ), "Failed to start ccp")
 
     if not config['args'].dry_run:
         time.sleep(1)
@@ -830,15 +832,17 @@ def cbr_start_server(traffic, config, node, execute):
     ccp_binary_name = ccp_binary.split('/')[-1]
     ccp_out = os.path.join(config['iteration_dir'], "ccp_const.out")
 
-    node.run(
+    agenda.subtask("Starting CBR CCP agent")
+    expect(node.run(
         "{ccp_path} --ipc=netlink --rate={rate}".format(
             ccp_path=ccp_binary,
             rate=traffic.rate,
         ),
+        sudo=True,
         background=True,
         stdout=ccp_out,
         stderr=ccp_out,
-    )
+    ), "Failed to start ccp_const agent")
 
     expect(
         node.run(
@@ -856,10 +860,13 @@ def cbr_start_server(traffic, config, node, execute):
     )
 
     if not config['args'].dry_run:
-        time.sleep(1)
+        time.sleep(2)
 
     node.check_file('Server listening on TCP port', iperf_out)
+    node.check_proc("ccp_example_alg", ccp_out)
+    node.check_file('starting CCP Example', ccp_out)
     config['iteration_outputs'].append((node, iperf_out))
+    config['iteration_outputs'].append((node, ccp_out))
     return iperf_out
 
 CBRTraffic.start_client = cbr_start_client

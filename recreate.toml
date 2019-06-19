@@ -37,15 +37,15 @@ outbox_target = "target/debug/outbox"
 CAIDA_CDF = "~/bundler-scripts/CAIDA_CDF"
 
 [ccp]
-#    [ccp.copa]
-#        repo = "https://github.com/akshayknarayan/ccp_copa.git"
-#        branch = "rate_only"
-#        commit = "latest"
-#        language = "rust"
-#        target = "target/debug/copa"
-#        [ccp.copa.args]
-#            delta_mode = "NoTCP"
-#            default_delta = 0.125
+    [ccp.copa]
+        repo = "https://github.com/akshayknarayan/ccp_copa.git"
+        branch = "rate_only"
+        commit = "latest"
+        language = "rust"
+        target = "target/debug/copa"
+        [ccp.copa.args]
+            delta_mode = "NoTCP"
+            default_delta = 0.125
     [ccp.nimbus]
         repo = "https://github.com/ccp-project/nimbus.git"
         branch = "null_xtcp"
@@ -57,6 +57,7 @@ CAIDA_CDF = "~/bundler-scripts/CAIDA_CDF"
             flow_mode = "XTCP"
             loss_mode = "Bundle"
             bw_est_mode = "false"
+            pulse_size = "0.25"
     [ccp.const]
         repo = "https://github.com/akshayknarayan/ccp_const_algorithm.git"
         branch = "master"
@@ -73,10 +74,10 @@ rate      = [96]
 rtt       = [50]
 bdp       = [3]
 bundle_traffic = [[
-    {source = 'iperf', alg = 'cubic', flows = 1, length = 40, port = 5000, start_delay = 0}
+    {source = 'iperf', alg = 'cubic', flows = 1, length = 30, port = 5000, start_delay = 0}
 #example poisson : { source = 'poisson', conns = 200, reqs = 10000, alg = 'reno', backlogged = 1, dist = 'CAIDA_CDF', load = '7/8' }
 ]]
 cross_traffic = [[
-    {source = 'cbr', length = 30, port = 8001, rate = 1000000, start_delay = 10}
-    #{source = 'iperf', alg = 'cubic', flows = 1, length = 10, port = 5002}
+    #{source = 'cbr', length = 20, port = 8001, rate = 10000000, start_delay = 20}
+    #{source = 'iperf', alg = 'cubic', flows = 1, length = 20, port = 8001, start_delay = 20}
 ]]
