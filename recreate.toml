@@ -57,6 +57,12 @@ CAIDA_CDF = "~/bundler-scripts/CAIDA_CDF"
             flow_mode = "XTCP"
             loss_mode = "Bundle"
             bw_est_mode = "false"
+    [ccp.const]
+        repo = "https://github.com/akshayknarayan/ccp_const_algorithm.git"
+        branch = "master"
+        commit = "latest"
+        language = "rust"
+        target = "target/release/ccp_example_alg"
 
 [experiment]
 #seed      = [0, 17, 26, 28, 41, 62, 67, 68, 88, 99]
@@ -67,10 +73,10 @@ rate      = [96]
 rtt       = [50]
 bdp       = [3]
 bundle_traffic = [[
-    {source = 'iperf', alg = 'cubic', flows = 1, length = 60, port = 5000, start_delay = 0}
+    {source = 'iperf', alg = 'cubic', flows = 1, length = 40, port = 5000, start_delay = 0}
 #example poisson : { source = 'poisson', conns = 200, reqs = 10000, alg = 'reno', backlogged = 1, dist = 'CAIDA_CDF', load = '7/8' }
 ]]
 cross_traffic = [[
-    {source = 'iperf', alg = 'cubic', flows = 1, length = 50, port = 8001, start_delay = 10}
+    {source = 'cbr', length = 30, port = 8001, rate = 1000000, start_delay = 10}
     #{source = 'iperf', alg = 'cubic', flows = 1, length = 10, port = 5002}
 ]]

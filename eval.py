@@ -252,7 +252,7 @@ def check_config(config):
 
     assert 'bundle_traffic' in config['experiment'], "must specify at least one type of bundle traffic"
     assert 'cross_traffic' in config['experiment'], "must specify at least one type of cross traffic"
-    sources = ['iperf', 'poisson']
+    sources = ['iperf', 'poisson', 'cbr']
     for traffic_type in ['bundle_traffic', 'cross_traffic']:
         for traffic in config['experiment'][traffic_type]:
             for t in traffic:
@@ -439,7 +439,6 @@ def check_etg(config, node):
     node.run("chmod +x {}".format(os.path.join(config['structure']['etg_dir'], config['structure']['etg_server'])))
 
 def check_sender(config, sender):
-
     agenda.subtask("iperf (sender)")
 
     if not sender.file_exists(config['structure']['iperf_path']):
@@ -448,9 +447,7 @@ def check_sender(config, sender):
     agenda.subtask("empirical traffic generator (sender)")
     check_etg(config, sender)
 
-
 def check_inbox(config, inbox):
-
     agenda.subtask("inbox")
 
     inbox_binary = get_inbox_binary(config)
@@ -737,11 +734,236 @@ def prepare_iteration_dir(config, conns):
             "Failed to create iteration directory {}".format(config['iteration_dir'])
         )
 
-
 IperfTraffic = namedtuple('IperfTraffic', ['port', 'report_interval', 'length', 'num_flows', 'alg', 'start_delay'])
+def iperf_start_client(traffic, config, node, in_bundler, execute):
+    agenda.subtask("Start iperf client ({})".format(traffic))
+    iperf_out = os.path.join(config['iteration_dir'], "iperf_client_{}.out".format(traffic.port))
+    check_bundler_port(in_bundler, traffic, config)
+    cmd = "sleep {delay} && {path} -c {ip} -p {port} --reverse -i {report_interval} -t {length} -P {num_flows} -Z {alg}".format(
+        path=config['structure']['iperf_path'],
+        ip=config['topology']['sender']['ifaces'][0]['addr'] if in_bundler else '$MAHIMAHI_BASE',
+        port=traffic.port,
+        report_interval=traffic.report_interval,
+        length=traffic.length,
+        num_flows=traffic.num_flows,
+        alg=traffic.alg,
+        delay=traffic.start_delay
+    )
+
+    config['iteration_outputs'].append((node, iperf_out))
+
+    if execute:
+        expect(
+            node.run(cmd,
+                background=True,
+                stdout=iperf_out,
+                stderr=iperf_out
+            ),
+            "Failed to start iperf client on {}".format(node.addr)
+        )
+    else:
+        return cmd + " > {}".format(iperf_out)
+
+def iperf_start_server(traffic, config, node, execute):
+    agenda.subtask("Start iperf server ({})".format(traffic))
+    iperf_out = os.path.join(config['iteration_dir'], "iperf_server_{}.out".format(traffic.port))
+    expect(
+        node.run(
+            "{path} -s -p {port} --reverse -i {report_interval} -t {length} -P {num_flows}".format(
+                path=config['structure']['iperf_path'],
+                port=traffic.port,
+                report_interval=traffic.report_interval,
+                length=traffic.length,
+                num_flows=traffic.num_flows,
+            ),
+            background=True,
+            stdout=iperf_out,
+            stderr=iperf_out
+        ),
+        "Failed to start iperf server on {}".format(node.addr)
+    )
+
+    if not config['args'].dry_run:
+        time.sleep(1)
+
+    node.check_file('Server listening on TCP port', iperf_out)
+    config['iteration_outputs'].append((node, iperf_out))
+    return iperf_out
+
+IperfTraffic.start_client = iperf_start_client
+IperfTraffic.start_server = iperf_start_server
+
+CBRTraffic = namedtuple('CBRTraffic', ['port', 'report_interval', 'length', 'rate', 'start_delay'])
+def cbr_start_client(traffic, config, node, in_bundler, execute):
+    agenda.subtask("Start cbr client ({})".format(traffic))
+    iperf_out = os.path.join(config['iteration_dir'], "cbr_client_{}.out".format(traffic.port))
+    check_bundler_port(in_bundler, traffic, config)
+
+    cmd = "sleep {delay} && {path} -c {ip} -p {port} --reverse -i {report_interval} -t {length}".format(
+        path=config['structure']['iperf_path'],
+        ip=config['topology']['sender']['ifaces'][0]['addr'] if in_bundler else '$MAHIMAHI_BASE',
+        port=traffic.port,
+        report_interval=traffic.report_interval,
+        length=traffic.length,
+        delay=traffic.start_delay
+    )
+
+    config['iteration_outputs'].append((node, iperf_out))
+
+    if execute:
+        expect(
+            node.run(cmd,
+                background=True,
+                stdout=iperf_out,
+                stderr=iperf_out
+            ),
+            "Failed to start iperf client on {}".format(node.addr)
+        )
+    else:
+        return cmd + " > {}".format(iperf_out)
+
+def cbr_start_server(traffic, config, node, execute):
+    agenda.subtask("Start cbr server ({})".format(traffic))
+    iperf_out = os.path.join(config['iteration_dir'], "cbr_server_{}.out".format(traffic.port))
+
+    ccp_binary = get_ccp_binary_path(config, 'const')
+    ccp_binary_name = ccp_binary.split('/')[-1]
+    ccp_out = os.path.join(config['iteration_dir'], "ccp_const.out")
+
+    node.run(
+        "{ccp_path} --ipc=netlink --rate={rate}".format(
+            ccp_path=ccp_binary,
+            rate=traffic.rate,
+        ),
+        background=True,
+        stdout=ccp_out,
+        stderr=ccp_out,
+    )
+
+    expect(
+        node.run(
+            "{path} -s -p {port} --reverse -i {report_interval} -t {length} -Z ccp".format(
+                path=config['structure']['iperf_path'],
+                port=traffic.port,
+                report_interval=traffic.report_interval,
+                length=traffic.length,
+            ),
+            background=True,
+            stdout=iperf_out,
+            stderr=iperf_out
+        ),
+        "Failed to start iperf server on {}".format(node.addr)
+    )
+
+    if not config['args'].dry_run:
+        time.sleep(1)
+
+    node.check_file('Server listening on TCP port', iperf_out)
+    config['iteration_outputs'].append((node, iperf_out))
+    return iperf_out
+
+CBRTraffic.start_client = cbr_start_client
+CBRTraffic.start_server = cbr_start_server
+
 PoissonTraffic = namedtuple('PoissonTraffic', ['num_conns', 'num_backlogged', 'num_reqs', 'distribution', 'fanout', 'load', 'congalg', "seed", 'start_delay'])
+def poisson_start_client(traffic, config, node, in_bundler, execute):
+    if config['args'].verbose:
+        agenda.subtask("Create ETG config file")
+
+    if traffic.num_conns > 1000:
+        fatal_warn("Requestedp poisson traffic with more than 1000 connections, which would be outside of outbox portrange ({}-{})".format(
+            config['parameters']['bg_port_start'], config['parameters']['bg_port_end']
+        ))
+
+    i=1
+    etg_config_path = os.path.join(config['iteration_dir'], "etgConfig{}".format(i))
+    while node.file_exists(etg_config_path) and not config['args'].dry_run:
+        i+=1
+        etg_config_path = os.path.join(config['iteration_dir'], "etgConfig{}".format(i))
+    with io.StringIO() as etg_config:
+        create_etg_config(config, etg_config, traffic)
+        node.put(etg_config, remote=os.path.join(config['iteration_dir'], "etgConfig{}".format(i)))
+
+    etg_out = os.path.join(config['iteration_dir'], "{}".format(i))
+
+    # NOTE: using cd + relative paths instead of absolute because etg has a buffer size of 80 for filenames
+    cmd = "sleep {delay} && cd {wd} && {path} -c {config} -l {out_prefix} -s {seed}".format(
+        wd=config['iteration_dir'],
+        path=config['etg_client_path'],
+        config=os.path.basename(etg_config_path),
+        out_prefix=str(i),
+        seed=traffic.seed,
+        delay=traffic.start_delay
+    )
+
+    config['iteration_outputs'].append((node, etg_out + "_flows.out"))
+    config['iteration_outputs'].append((node, etg_out + "_reqs.out"))
+
+    if execute:
+        expect(
+            node.run(cmd,
+                background=True,
+                stdout=etg_out,
+                stderr=etg_out,
+            ),
+            "Failed to start poisson client on {}".format(node.addr)
+        )
+    else:
+        return cmd
+
+def poisson_start_server(traffic, config, node, execute):
+    agenda.subtask("Start poisson server ({})".format(traffic))
+
+    i=1
+    etg_out = os.path.join(config['iteration_dir'], "etg_server{}.out".format(i))
+    while node.file_exists(etg_out) and not config['args'].dry_run:
+        i+=1
+        etg_out = os.path.join(config['iteration_dir'], "etg_server{}.out".format(i))
+
+    expect(
+        node.run(
+            "{sh} {start} {conns} {alg}".format(
+                sh=os.path.join(config['etg_server_path']),
+                start=config['parameters']['bg_port_start'],
+                conns=traffic.num_conns,
+                alg=traffic.congalg
+            ),
+            stdout=etg_out,
+            stderr=etg_out,
+            background=True,
+        ),
+        "Failed to start poisson servers on {}".format(node.addr)
+    )
+
+    if not config['args'].dry_run:
+        time.sleep(1)
+        num_servers_running = int(node.run("pgrep -c etgServer").stdout.strip())
+    else:
+        num_servers_running = traffic.num_conns
+    if num_servers_running != traffic.num_conns:
+        fatal_warn("Traffic pattern requested {} servers, but only {} are running properly.".format(traffic.num_conns, num_servers_running), exit=False)
+        with io.BytesIO() as f:
+            node.get(os.path.expanduser(etg_out), local=f)
+            print(f.getvalue().decode("utf-8"))
+        sys.exit(1)
+
+    config['iteration_outputs'].append((node, etg_out))
+
+    return etg_out
+
+PoissonTraffic.start_client = poisson_start_client
+PoissonTraffic.start_server = poisson_start_server
 MahimahiConfig = namedtuple('MahimahiConfig', ['rtt', 'rate', 'ecmp', 'num_bdp'])
 
+def check_bundler_port(in_bundler, traffic, config):
+    if in_bundler and (traffic.port < config['parameters']['bg_port_start'] or traffic.port > config['parameters']['bg_port_end']):
+        fatal_warn("Bundle traffic ({}) is outside of bundle capture region! ({}-{})".format(
+            traffic.port, config['parameters']['bg_port_start'], config['parameters']['bg_port_end']
+        ))
+    elif not in_bundler and traffic.port > config['parameters']['bg_port_start'] and traffic.port < config['parameters']['bg_port_end']:
+        fatal_warn("Cross traffic ({}) is in bundle capture region! ({}-{})".format(
+            traffic.port, config['parameters']['bg_port_start'], config['parameters']['bg_port_end']
+        ))
 
 def start_multiple_client(config, node, traffic, in_bundler, execute=True):
     for t in traffic:
@@ -750,89 +972,7 @@ def start_multiple_client(config, node, traffic, in_bundler, execute=True):
 def start_client(config, node, traffic, in_bundler, execute=True):
     if not traffic:
         return None if execute else ''
-    if isinstance(traffic, IperfTraffic):
-        agenda.subtask("Start iperf client ({})".format(traffic))
-        iperf_out = os.path.join(config['iteration_dir'], "iperf_client_{}.out".format(traffic.port))
-        if in_bundler and (traffic.port < config['parameters']['bg_port_start'] or traffic.port > config['parameters']['bg_port_end']):
-            fatal_warn("Bundle traffic ({}) is outside of bundle capture region! ({}-{})".format(
-                traffic.port, config['parameters']['bg_port_start'], config['parameters']['bg_port_end']
-            ))
-        elif not in_bundler and traffic.port > config['parameters']['bg_port_start'] and traffic.port < config['parameters']['bg_port_end']:
-            fatal_warn("Cross traffic ({}) is in bundle capture region! ({}-{})".format(
-                traffic.port, config['parameters']['bg_port_start'], config['parameters']['bg_port_end']
-            ))
-
-        cmd = "sleep {delay} && {path} -c {ip} -p {port} --reverse -i {report_interval} -t {length} -P {num_flows} -Z {alg}".format(
-            path=config['structure']['iperf_path'],
-            ip=config['topology']['sender']['ifaces'][0]['addr'] if in_bundler else '$MAHIMAHI_BASE',
-            port=traffic.port,
-            report_interval=traffic.report_interval,
-            length=traffic.length,
-            num_flows=traffic.num_flows,
-            alg=traffic.alg,
-            delay=traffic.start_delay
-        )
-
-        config['iteration_outputs'].append((node, iperf_out))
-
-        if execute:
-            expect(
-                node.run(cmd,
-                    background=True,
-                    stdout=iperf_out,
-                    stderr=iperf_out
-                ),
-                "Failed to start iperf client on {}".format(node.addr)
-            )
-        else:
-            return cmd + " > {}".format(iperf_out)
-    elif isinstance(traffic, PoissonTraffic):
-        if config['args'].verbose:
-            agenda.subtask("Create ETG config file")
-
-        if traffic.num_conns > 1000:
-            fatal_warn("Requestedp poisson traffic with more than 1000 connections, which would be outside of outbox portrange ({}-{})".format(
-                config['parameters']['bg_port_start'], config['parameters']['bg_port_end']
-            ))
-
-        i=1
-        etg_config_path = os.path.join(config['iteration_dir'], "etgConfig{}".format(i))
-        while node.file_exists(etg_config_path) and not config['args'].dry_run:
-            i+=1
-            etg_config_path = os.path.join(config['iteration_dir'], "etgConfig{}".format(i))
-        with io.StringIO() as etg_config:
-            create_etg_config(config, etg_config, traffic)
-            node.put(etg_config, remote=os.path.join(config['iteration_dir'], "etgConfig{}".format(i)))
-
-        etg_out = os.path.join(config['iteration_dir'], "{}".format(i))
-
-        # NOTE: using cd + relative paths instead of absolute because etg has a buffer size of 80 for filenames
-        cmd = "sleep {delay} && cd {wd} && {path} -c {config} -l {out_prefix} -s {seed}".format(
-            wd=config['iteration_dir'],
-            path=config['etg_client_path'],
-            config=os.path.basename(etg_config_path),
-            out_prefix=str(i),
-            seed=traffic.seed,
-            delay=traffic.start_delay
-        )
-
-        config['iteration_outputs'].append((node, etg_out + "_flows.out"))
-        config['iteration_outputs'].append((node, etg_out + "_reqs.out"))
-
-        if execute:
-            expect(
-                node.run(cmd,
-                    background=True,
-                    stdout=etg_out,
-                    stderr=etg_out,
-                ),
-                "Failed to start poisson client on {}".format(node.addr)
-            )
-        else:
-            return cmd
-
-    else:
-        fatal_warn("Unknown traffic type; tailed to start client")
+    return traffic.start_client(config, node, in_bundler, execute)
 
 def start_multiple_server(config, node, traffic, execute=True):
     for t in traffic:
@@ -841,74 +981,7 @@ def start_multiple_server(config, node, traffic, execute=True):
 def start_server(config, node, traffic, execute=True):
     if not traffic:
         return None if execute else ''
-    if isinstance(traffic, IperfTraffic):
-        agenda.subtask("Start iperf server ({})".format(traffic))
-        iperf_out = os.path.join(config['iteration_dir'], "iperf_server_{}.out".format(traffic.port))
-        expect(
-            node.run(
-                "{path} -s -p {port} --reverse -i {report_interval} -t {length} -P {num_flows}".format(
-                    path=config['structure']['iperf_path'],
-                    port=traffic.port,
-                    report_interval=traffic.report_interval,
-                    length=traffic.length,
-                    num_flows=traffic.num_flows,
-                ),
-                background=True,
-                stdout=iperf_out,
-                stderr=iperf_out
-            ),
-            "Failed to start iperf server on {}".format(node.addr)
-        )
-
-        if not config['args'].dry_run:
-            time.sleep(1)
-        node.check_file('Server listening on TCP port', iperf_out)
-
-        config['iteration_outputs'].append((node, iperf_out))
-
-        return iperf_out
-    elif isinstance(traffic, PoissonTraffic):
-        agenda.subtask("Start poisson server ({})".format(traffic))
-
-        i=1
-        etg_out = os.path.join(config['iteration_dir'], "etg_server{}.out".format(i))
-        while node.file_exists(etg_out) and not config['args'].dry_run:
-            i+=1
-            etg_out = os.path.join(config['iteration_dir'], "etg_server{}.out".format(i))
-
-        expect(
-            node.run(
-                "{sh} {start} {conns} {alg}".format(
-                    sh=os.path.join(config['etg_server_path']),
-                    start=config['parameters']['bg_port_start'],
-                    conns=traffic.num_conns,
-                    alg=traffic.congalg
-                ),
-                stdout=etg_out,
-                stderr=etg_out,
-                background=True,
-            ),
-            "Failed to start poisson servers on {}".format(node.addr)
-        )
-
-        if not config['args'].dry_run:
-            time.sleep(1)
-            num_servers_running = int(node.run("pgrep -c etgServer").stdout.strip())
-        else:
-            num_servers_running = traffic.num_conns
-        if num_servers_running != traffic.num_conns:
-            fatal_warn("Traffic pattern requested {} servers, but only {} are running properly.".format(traffic.num_conns, num_servers_running), exit=False)
-            with io.BytesIO() as f:
-                node.get(os.path.expanduser(etg_out), local=f)
-                print(f.getvalue().decode("utf-8"))
-            sys.exit(1)
-
-        config['iteration_outputs'].append((node, etg_out))
-
-        return etg_out
-
-    else:
-        fatal_warn("Unknown traffic type; tailed to start client")
+    return traffic.start_server(config, node, execute)
 
 def start_tcpprobe(config, sender):
     if config['args'].verbose:
@@ -944,6 +1017,14 @@ def create_traffic_config(traffic, seed):
                 length=t['length'],
                 num_flows=t['flows'],
                 alg=t['alg'],
+                start_delay=t['start_delay']
+            )
+        elif t['source'] == 'cbr':
+            yield CBRTraffic(
+                port=t['port'],
+                report_interval=1,
+                length=t['length'],
+                rate=t['rate'],
                 start_delay=t['start_delay']
             )
         elif t['source'] == 'poisson':
@@ -1087,8 +1168,5 @@ if __name__ == "__main__":
                 except:
                     warn("could not get file {}".format(fname))
 
-
     ### if simulation, otherwise dont need to put outbox thing in a separate script
-
     ###################################################################################################
-
