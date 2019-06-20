@@ -58,6 +58,7 @@ CAIDA_CDF = "~/bundler-scripts/CAIDA_CDF"
             loss_mode = "Bundle"
             bw_est_mode = "false"
             pulse_size = "0.25"
+            bundler_qlen = "300"
     [ccp.const]
         repo = "https://github.com/akshayknarayan/ccp_const_algorithm.git"
         branch = "master"
@@ -69,7 +70,13 @@ CAIDA_CDF = "~/bundler-scripts/CAIDA_CDF"
 #seed      = [0, 17, 26, 28, 41, 62, 67, 68, 88, 99]
 seed      = [0]
 sch       = ['fifo']
-alg       = ['nimbus']
+alg       = [
+    {
+        name = 'nimbus',
+        bundler_qlen_alpha = ["32.0", "64.0", "128.0", "256.0", "512.0", "1024.0"],
+        bundler_qlen_beta = ["1024.0", "2048.0", "4096.0", "8192.0", "16384.0", "32768.0", "65536.0"]
+    }
+]
 rate      = [96]
 rtt       = [50]
 bdp       = [3]
