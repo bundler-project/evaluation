@@ -73,19 +73,19 @@ sch       = ['fifo']
 alg       = [
     {
         name = 'nimbus',
-        bundler_qlen_alpha = ["32.0", "64.0", "128.0", "256.0", "512.0", "1024.0"],
-        bundler_qlen_beta = ["1024.0", "2048.0", "4096.0", "8192.0", "16384.0", "32768.0", "65536.0"]
+        bundler_qlen_alpha = ["64.0", "128.0", "256.0", "512.0"],
+        bundler_qlen_beta = ["4096.0", "8192.0", "16384.0", "32768.0"]
     }
 ]
 rate      = [96]
 rtt       = [50]
 bdp       = [3]
 bundle_traffic = [[
-    {source = 'iperf', alg = 'cubic', flows = 1, length = 30, port = 5000, start_delay = 0}
+    {source = 'iperf', alg = 'cubic', flows = 1, length = 60, port = 5000, start_delay = 0}
 #example poisson : { source = 'poisson', conns = 200, reqs = 10000, alg = 'reno', backlogged = 1, dist = 'CAIDA_CDF', load = '7/8' }
 ]]
 cross_traffic = [
     [],
-    [{source = 'cbr', length = 20, port = 8001, rate = 10000000, start_delay = 20}],
-    [{source = 'iperf', alg = 'cubic', flows = 1, length = 20, port = 8001, start_delay = 20}]
+    [{source = 'cbr', length = 40, port = 8001, rate = 10000000, start_delay = 20}],
+    [{source = 'iperf', alg = 'cubic', flows = 1, length = 40, port = 8001, start_delay = 20}]
 ]
