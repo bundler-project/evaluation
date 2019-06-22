@@ -5,7 +5,6 @@ import agenda
 import os.path
 from collections import namedtuple
 import time
-from termcolor import colored
 import logging
 import socket
 import itertools
@@ -175,19 +174,6 @@ def setup_networking(machines, config):
                 ),
                 "Failed to turn off optimizations"
             )
-
-def create_etg_config(global_config, f, traffic):
-    port_start = int(global_config['parameters']['bg_port_start'])
-    num_conns = int(traffic.num_conns)
-    num_backlogged = int(traffic.num_backlogged)
-    for p in range(port_start, port_start + num_conns):
-        f.write("server {} {}\n".format(global_config['topology']['sender']['ifaces'][0]['addr'], p))
-    f.write("req_size_dist {}\n".format(os.path.expanduser(os.path.join(global_config['distribution_dir'], traffic.distribution))))
-    f.write("fanout {}\n".format(traffic.fanout))
-    if num_backlogged:
-        f.write("persistent_servers {}\n".format(num_backlogged))
-    f.write("load {}Mbps\n".format(traffic.load))
-    f.write("num_reqs {}\n".format(traffic.num_reqs))
 
 def kill_leftover_procs(config, conns):
     agenda.subtask("Kill leftover experiment processes")
@@ -398,7 +384,7 @@ def start_inbox(config, inbox, qtype, q_buffer_size):
 def prepare_directories(config, conns):
     bundler_root = config['structure']['bundler_root']
     config['box_root'] = os.path.join(bundler_root, "bundler")
-    config['experiment_root'] = os.path.join(bundler_root, "experimentz")
+    config['experiment_root'] = os.path.join(bundler_root, "experiments")
 
     config['experiment_dir'] = os.path.join(config['experiment_root'], config['experiment_name'])
     config['ccp_dir'] = os.path.join(bundler_root, 'ccp')
