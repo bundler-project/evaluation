@@ -77,6 +77,10 @@ def check_config(config):
     assert num_self > 0, "One node in topology section must be labeled with \"self = true\""
     assert num_self == 1, "Only one node in topology section can be labeled self"
 
+    for k in config['sysctl']:
+        v = config['sysctl'][k]
+        assert type(v) == str, "key names with dots must be enclosed in quotes (sysctl)"
+
     assert 'initial_sample_rate' in config['parameters'], "parameters must include initial_sample_rate"
     assert 'bg_port_start' in config['parameters'], "parameters must include bg_port_start"
 
@@ -146,6 +150,21 @@ def create_ssh_connections(config):
         machines[role] = conns[hostname]
 
     return (conns, machines)
+
+def update_sysctl(conns, config):
+    if 'sysctl' in config:
+        agenda.task("Updating sysctl")
+
+        for (addr, conn) in conns.items():
+            if config['args'].verbose or config['args'].dry_run:
+                agenda.subtask(addr)
+
+            for k in config['sysctl']:
+                v = config['sysctl'][k]
+                expect(
+                    conn.run("sysctl -w {k}=\"{v}\"".format(k=k,v=v), sudo=True),
+                    "Failed to set {k} on {addr}".format(k=k, addr=addr)
+                )
 
 def setup_networking(machines, config):
     agenda.task("Setting up routing tables")
@@ -563,6 +582,7 @@ if __name__ == "__main__":
     conns, machines = create_ssh_connections(config)
     if not args.skip_setup:
         setup_networking(machines, config)
+        update_sysctl(machines, config)
 
     prepare_directories(config, conns)
     details_md = os.path.join(os.path.expanduser(config['experiment_dir']), 'details.md')
