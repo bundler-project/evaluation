@@ -296,6 +296,7 @@ def start_outbox(config, outbox, emulation_env=None, bundle_client=None, cross_c
         sample_rate=config['parameters']['initial_sample_rate'],
         extra="--no_ethernet" if emulation_env else '',
     )
+    outbox_output = os.path.join(config['iteration_dir'], 'outbox.log')
 
     mm_inner = io.StringIO()
     mm_inner.write("""#!/bin/bash
@@ -314,7 +315,7 @@ for pid in ${{pids[*]}}; do
 done
 """.format(
         outbox_cmd=outbox_cmd,
-        outbox_output=os.path.join(config['iteration_dir'], 'outbox.out'),
+        outbox_output=outbox_output,
         cross_clients='\n'.join(["({}) &\npids+=($!)".format(c) for c in cross_client]),
         bundle_clients='\n'.join(["({}) &\npids+=($!)".format(c) for c in bundle_client]),
     ))
