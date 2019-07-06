@@ -37,14 +37,16 @@ parser.add_argument('--skip-existing', action='store_true', dest='skip_existing'
         help="if supplied, if results already exist for a given experiment, that experiment will be skipped and results preserved, good for finishing an incomplete experiment")
 parser.add_argument('--tcpprobe', action='store_true', dest='tcpprobe',
         help="if supplied, run tcpprobe at the sender")
+parser.add_argument('--name', type=str, help="name of experiment directory", required=True)
+parser.add_argument('--details', type=str, help="extra information to include in experiment report")
 ###################################################################################################
 
-def read_config():
+def read_config(args):
     agenda.task("Reading config file: {}".format(args.config))
     with open(args.config) as f:
         try:
             config = toml.loads(f.read())
-            config['experiment_name'] = args.config.split(".toml")[0]
+            config['experiment_name'] = args.name #args.config.split(".toml")[0]
         except Exception as e:
             print(e)
             fatal_error("Failed to parse config")
@@ -448,6 +450,8 @@ def prepare_directories(config, conns):
             elif got == 'n':
                 sys.exit(1)
 
+    os.makedirs(os.path.expanduser(config['experiment_dir']))
+
     for (addr, conn) in conns.items():
         if config['args'].verbose:
             agenda.subtask(addr)
@@ -552,7 +556,7 @@ if __name__ == "__main__":
 
     agenda.section("Setup")
 
-    config = read_config()
+    config = read_config(args)
     config['args'] = args
     if config['args'].verbose and config['args'].verbose >= 2:
         logging.basicConfig(level=logging.DEBUG)
@@ -561,6 +565,14 @@ if __name__ == "__main__":
         setup_networking(machines, config)
 
     prepare_directories(config, conns)
+    details_md = os.path.join(os.path.expanduser(config['experiment_dir']), 'details.md')
+    results_md = os.path.join(os.path.expanduser(config['experiment_dir']), 'results.md')
+    if not os.path.exists(details_md):
+        with open(details_md, 'w') as f:
+            f.write(args.details + "\n")
+    if not os.path.exists(results_md):
+        with open(results_md, 'w') as f:
+            f.write("TODO\n")
 
     if not args.skip_git:
         agenda.task("Synchronizing code versions")
