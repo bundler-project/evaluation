@@ -578,7 +578,7 @@ if __name__ == "__main__":
         else:
             exp_alg_iteration_name = exp.alg
 
-        iteration_name = "{sch}_{alg}_{rate}_{rtt}/b={bundle}_c={cross}/{seed}".format(
+        iteration_name = "{sch}_{rate}_{rtt}/{alg}/b={bundle}_c={cross}/{seed}".format(
             sch=exp.sch,
             alg=exp_alg_iteration_name,
             rate=exp.rate,
