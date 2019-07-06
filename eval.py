@@ -10,6 +10,7 @@ import socket
 import itertools
 import random
 import io
+import subprocess
 
 from util import *
 from traffic import *
@@ -45,6 +46,7 @@ def read_config():
             config = toml.loads(f.read())
             config['experiment_name'] = args.config.split(".toml")[0]
         except Exception as e:
+            print(e)
             fatal_error("Failed to parse config")
             raise e
         check_config(config)
@@ -63,6 +65,13 @@ def check_config(config):
             assert 'dev' in iface, "topology.{} iface {} is missing 'dev' key".format(node, i)
             assert 'addr' in iface, "topology.{} iface {} is missing 'addr' key".format(node, i)
     assert len(topology['inbox']['ifaces']) > 1, "topology.inbox must have at least 2 interaces"
+
+    num_self = 0
+    for node in topology:
+        if 'self' in topology[node] and topology[node]['self']:
+            num_self += 1
+    assert num_self > 0, "One node in topology section must be labeled with \"self = true\""
+    assert num_self == 1, "Only one node in topology section can be labeled self"
 
     assert 'initial_sample_rate' in config['parameters'], "parameters must include initial_sample_rate"
     assert 'bg_port_start' in config['parameters'], "parameters must include bg_port_start"
@@ -95,14 +104,15 @@ def create_ssh_connections(config):
     args = config['args']
     for (role, details) in config['topology'].items():
         hostname = details['name']
-        if role is not "local" and not hostname in conns:
+        is_self = 'self' in details and details['self']
+        if is_self:
+            agenda.subtask(hostname)
+            conns[hostname] = ConnectionWrapper('localhost', nickname=role, dry=args.dry_run, verbose=args.verbose, interact=args.interact)
+            config['self'] = conns[hostname]
+        elif not hostname in conns:
             agenda.subtask(hostname)
             conns[hostname] = ConnectionWrapper(hostname, nickname=role, dry=args.dry_run, verbose=args.verbose, interact=args.interact)
         machines[role] = conns[hostname]
-
-    localhost = ConnectionWrapper('localhost', nickname='self', dry=args.dry_run, verbose=args.verbose, interact=args.interact)
-    machines['self'] = localhost
-    conns['self'] = localhost
 
     return (conns, machines)
 
@@ -383,6 +393,7 @@ def start_inbox(config, inbox, qtype, q_buffer_size):
     return inbox_out
 
 def prepare_directories(config, conns):
+    agenda.task("Preparing result directories")
     bundler_root = config['structure']['bundler_root']
     config['box_root'] = os.path.join(bundler_root, "bundler")
     config['experiment_root'] = os.path.join(bundler_root, "experiments")
@@ -427,7 +438,8 @@ def prepare_directories(config, conns):
         )
 
     # Keep a copy of the config in the experiment directory for future reference
-    conns['self'].run("cp {} {}".format(config['args'].config, config['experiment_dir']))
+
+    subprocess.check_output("cp {} {}".format(config['args'].config, config['experiment_dir']), shell=True)
 
 iteration_dirs = set()
 def prepare_iteration_dir(config, conns):
@@ -518,7 +530,6 @@ if __name__ == "__main__":
     if not args.skip_setup:
         setup_networking(machines, config)
 
-    agenda.task("Preparing result directories")
     prepare_directories(config, conns)
 
     if not args.skip_git:
@@ -617,7 +628,7 @@ if __name__ == "__main__":
 
         agenda.subtask("collecting results")
         for (m, fname) in config['iteration_outputs']:
-            if m != machines['local']:
+            if m != config['self']: 
                 try:
                     m.get(os.path.expanduser(fname), local=os.path.expanduser(os.path.join(config['iteration_dir'], os.path.basename(fname))))
                 except:
