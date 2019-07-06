@@ -66,6 +66,8 @@ def check_config(config):
             assert 'addr' in iface, "topology.{} iface {} is missing 'addr' key".format(node, i)
     assert len(topology['inbox']['ifaces']) > 1, "topology.inbox must have at least 2 interaces"
 
+    assert 'listen_port' in topology['inbox'], "topology.inbox must define listen_port"
+
     num_self = 0
     for node in topology:
         if 'self' in topology[node] and topology[node]['self']:
@@ -76,15 +78,38 @@ def check_config(config):
     assert 'initial_sample_rate' in config['parameters'], "parameters must include initial_sample_rate"
     assert 'bg_port_start' in config['parameters'], "parameters must include bg_port_start"
 
+    structure_fields = [
+        ('bundler_root', 'root directory for all experiments and code'),
+        ('etg_dir', 'path to empirical traffic generator source'),
+        ('etg_client', 'relative path to client binary within etg_dir'),
+        ('etg_server', 'relative path to server binary within etg_dir'),
+        ('iperf_path', 'path to reverse iperf binary'),
+        ('bundler_dir', 'path to bundler (inbox/outbox) source code'),
+        ('inbox_target', 'relative path to inbox binary within bundler_dir'),
+        ('outbox_target', 'relative path to outbox binary within bundler_dir'),
+    ]
+
+    for (field,detail) in structure_fields:
+        assert field in config['structure'], "[structure] missing key '{}': {}".format(field, detail)
+
+    assert len(config['experiment']['seed']) > 0, "must specify at least one seed"
+    assert len(config['experiment']['sch']) > 0, "must specify at least one scheduler (sch)"
+    assert len(config['experiment']['alg']) > 0, "must specify at least one algorithm (alg)"
+    assert len(config['experiment']['rate']) > 0, "must specify at least one rate"
+    assert len(config['experiment']['rtt']) > 0, "must specify at least one rtt"
+    assert len(config['experiment']['bdp']) > 0, "must specify at least one bdp"
+
     assert 'bundle_traffic' in config['experiment'], "must specify at least one type of bundle traffic"
+    assert len(config['experiment']['bundle_traffic']) > 0, "must specify at least one type of bundle traffic"
     assert 'cross_traffic' in config['experiment'], "must specify at least one type of cross traffic"
+    assert len(config['experiment']['cross_traffic']) > 0, "must specify at least one type of cross traffic"
+
     sources = ['iperf', 'poisson', 'cbr']
     for traffic_type in ['bundle_traffic', 'cross_traffic']:
         for traffic in config['experiment'][traffic_type]:
             for t in traffic:
                 assert t['source'] in sources, "{} traffic source must be one of ({})".format(traffic_type, "|".join(sources))
-                if 'start_delay' not in t:
-                    t['start_delay'] = 0
+                assert 'start_delay' in t, "{} missing start_delay (int)".format(traffic_type) 
                 if t['source'] == 'iperf':
                     assert t['alg'], "{} missing 'alg' (str)".format(traffic_type)
                     assert t['flows'], "{} missing 'flows' (int)".format(traffic_type)
@@ -96,6 +121,10 @@ def check_config(config):
                     assert t['load'], "{} missing 'load' (str)".format(traffic_type)
                     assert t['alg'], "{} missing 'alg' (str)".format(traffic_type)
                     assert t['backlogged'], "{} missing 'backlogged' (int)".format(traffic_type)
+                if t['source'] == 'cbr':
+                    assert t['length'], "{} missing 'length (int)'".format(traffic_type)
+                    assert t['port'], "{} missing 'port (int)'".format(traffic_type)
+                    assert t['rate'], "{} missing 'rate (int)'".format(traffic_type)
 
 def create_ssh_connections(config):
     agenda.task("Creating SSH connections")
