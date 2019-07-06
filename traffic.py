@@ -26,7 +26,7 @@ class IperfTraffic(Traffic):
 
     def start_client(traffic, config, node, in_bundler, execute):
         agenda.subtask("Start iperf client ({})".format(traffic))
-        iperf_out = os.path.join(config['iteration_dir'], "iperf_client_{}.out".format(traffic.port))
+        iperf_out = os.path.join(config['iteration_dir'], "iperf_client_{}.log".format(traffic.port))
         check_bundler_port(in_bundler, traffic, config)
         cmd = "sleep {delay} && {path} -c {ip} -p {port} --reverse -i {report_interval} -t {length} -P {num_flows} -Z {alg}".format(
             path=config['structure']['iperf_path'],
@@ -55,7 +55,7 @@ class IperfTraffic(Traffic):
 
     def start_server(traffic, config, node, execute):
         agenda.subtask("Start iperf server ({})".format(traffic))
-        iperf_out = os.path.join(config['iteration_dir'], "iperf_server_{}.out".format(traffic.port))
+        iperf_out = os.path.join(config['iteration_dir'], "iperf_server_{}.log".format(traffic.port))
         expect(
             node.run(
                 "{path} -s -p {port} --reverse -i {report_interval} -t {length} -P {num_flows}".format(
@@ -90,7 +90,7 @@ class CBRTraffic(Traffic):
 
     def start_client(traffic, config, node, in_bundler, execute):
         agenda.subtask("Start cbr client ({})".format(traffic))
-        iperf_out = os.path.join(config['iteration_dir'], "cbr_client_{}.out".format(traffic.port))
+        iperf_out = os.path.join(config['iteration_dir'], "cbr_client_{}.log".format(traffic.port))
         check_bundler_port(in_bundler, traffic, config)
 
         cmd = "sleep {delay} && {path} -c {ip} -p {port} --reverse -i {report_interval} -t {length}".format(
@@ -118,11 +118,11 @@ class CBRTraffic(Traffic):
 
     def start_server(traffic, config, node, execute):
         agenda.subtask("Start cbr server ({})".format(traffic))
-        iperf_out = os.path.join(config['iteration_dir'], "cbr_server_{}.out".format(traffic.port))
+        iperf_out = os.path.join(config['iteration_dir'], "cbr_server_{}.log".format(traffic.port))
 
         ccp_binary = get_ccp_binary_path(config, 'const')
         ccp_binary_name = ccp_binary.split('/')[-1]
-        ccp_out = os.path.join(config['iteration_dir'], "ccp_const.out")
+        ccp_out = os.path.join(config['iteration_dir'], "ccp_const.log")
 
         agenda.subtask("Starting CBR CCP agent")
         expect(node.run(
@@ -212,8 +212,8 @@ class PoissonTraffic(Traffic):
             delay=traffic.start_delay
         )
 
-        config['iteration_outputs'].append((node, etg_out + "_flows.out"))
-        config['iteration_outputs'].append((node, etg_out + "_reqs.out"))
+        config['iteration_outputs'].append((node, etg_out + "_flows.log"))
+        config['iteration_outputs'].append((node, etg_out + "_reqs.log"))
 
         if execute:
             expect(
@@ -231,10 +231,10 @@ class PoissonTraffic(Traffic):
         agenda.subtask("Start poisson server ({})".format(traffic))
 
         i=1
-        etg_out = os.path.join(config['iteration_dir'], "etg_server{}.out".format(i))
+        etg_out = os.path.join(config['iteration_dir'], "etg_server{}.log".format(i))
         while node.file_exists(etg_out) and not config['args'].dry_run:
             i+=1
-            etg_out = os.path.join(config['iteration_dir'], "etg_server{}.out".format(i))
+            etg_out = os.path.join(config['iteration_dir'], "etg_server{}.log".format(i))
 
         expect(
             node.run(

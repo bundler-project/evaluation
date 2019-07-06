@@ -350,12 +350,13 @@ done
     else:
         agenda.subtask("Starting traffic, no emulation")
         outbox.run(mm_inner_path, background=True)
+    config['iteration_outputs'].append((outbox, outbox_output))
 
 
 def start_inbox(config, inbox, qtype, q_buffer_size):
     agenda.subtask("Starting inbox")
 
-    inbox_out = os.path.join(config['iteration_dir'], "inbox.out")
+    inbox_out = os.path.join(config['iteration_dir'], "inbox.log")
 
     res = inbox.run(
         "{path} --iface={iface} --port={port} --sample_rate={sample} --qtype={qtype} --buffer={buf}".format(
@@ -453,7 +454,7 @@ def start_tcpprobe(config, sender):
         "Sender failed to clear tcpprobe buffer"
     )
 
-    tcpprobe_out = os.path.join(config['iteration_dir'], 'tcpprobe.out')
+    tcpprobe_out = os.path.join(config['iteration_dir'], 'tcpprobe.log')
     expect(
         sender.run(
             "dd if=/proc/net/tcpprobe of={} bs=256".format(tcpprobe_out),

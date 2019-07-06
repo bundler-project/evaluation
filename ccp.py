@@ -78,7 +78,7 @@ def start_ccp(config, inbox, alg):
 
     ccp_binary = get_ccp_binary_path(config, alg)
     ccp_binary_name = ccp_binary.split('/')[-1]
-    ccp_out = os.path.join(config['iteration_dir'], "ccp.out")
+    ccp_out = os.path.join(config['iteration_dir'], "ccp.log")
 
     alg_args = []
 
