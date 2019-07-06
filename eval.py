@@ -385,7 +385,7 @@ def start_inbox(config, inbox, qtype, q_buffer_size):
     )
 
     if not config['args'].dry_run:
-        time.sleep(2)
+        time.sleep(10)
     inbox.check_proc('inbox', inbox_out)
     inbox.check_file('Wait for CCP to install datapath program', inbox_out)
 
