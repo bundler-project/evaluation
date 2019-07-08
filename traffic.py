@@ -80,7 +80,7 @@ class IperfTraffic(Traffic):
         return iperf_out
 
 class CBRTraffic(Traffic):
-    trafficType = namedtuple('CBRTraffic', ['port', 'report_interval', 'length', 'rate', 'start_delay'])
+    trafficType = namedtuple('CBRTraffic', ['port', 'report_interval', 'length', 'rate', 'cwnd_cap', 'start_delay'])
 
     def __init__(self, *args, **kwargs):
         self.traffic = CBRTraffic.trafficType(**kwargs)
@@ -126,9 +126,10 @@ class CBRTraffic(Traffic):
 
         agenda.subtask("Starting CBR CCP agent")
         expect(node.run(
-            "{ccp_path} --ipc=netlink --rate={rate}".format(
+            "{ccp_path} --ipc=netlink --rate={rate} --cwnd_cap={cwnd_cap}".format(
                 ccp_path=ccp_binary,
                 rate=traffic.rate,
+                cwnd_cap=traffic.cwnd_cap,
             ),
             sudo=True,
             background=True,
@@ -285,6 +286,7 @@ def create_traffic_config(traffic, exp):
                 report_interval=1,
                 length=t['length'],
                 rate=t['rate'],
+                cwnd_cap=t['cwnd_cap'],
                 start_delay=t['start_delay']
             )
         elif t['source'] == 'poisson':
