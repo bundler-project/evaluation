@@ -11,11 +11,13 @@ import itertools
 import random
 import io
 import subprocess
+import getpass
 
 from util import *
 from traffic import *
 from ccp import *
 from parse_outputs import parse_outputs
+from zulip_notify import zulip_notify
 
 ###################################################################################################
 # Parse arguments
@@ -336,7 +338,7 @@ def check_receiver(config, receiver):
     check_etg(config, receiver)
 
     agenda.subtask("CCP (receiver)")
-    check_ccp_alg(config, receiver)
+    #check_ccp_alg(config, receiver)
 
 def start_outbox(config, outbox, emulation_env=None, bundle_client=None, cross_client=None):
     outbox_cmd = "sudo {path} --filter \"{pcap_filter}\" --iface {iface} --inbox {inbox_addr} --sample_rate {sample_rate} {extra}".format(
@@ -614,6 +616,26 @@ if __name__ == "__main__":
     random.shuffle(exps)
     total_exps = len(exps)
 
+    try:
+        with open('curr_url','r') as f:
+            sea_url = "Follow progress here: {}".format(f.read().strip())
+    except Exception as e:
+        warn("Unable to find current seashells url: {}".format(e), exit=False)
+        sea_url = ""
+
+    zulip_notify("""**{me}** started a new experiment: `{name}` ({total_exps} configs)
+```quote
+{details}
+```
+{sea_url}
+""".format(
+        me=getpass.getuser(),
+        name=config['experiment_name'],
+        details=args.details,
+        total_exps=total_exps,
+        sea_url=sea_url
+    ))
+
     for i,exp in enumerate(exps):
         if exp.alg == "nobundler" and exp.sch != "fifo":
             agenda.subtask("skipping...")
@@ -697,5 +719,12 @@ if __name__ == "__main__":
                 except:
                     warn("could not get file {}".format(fname))
 
+        agenda.task("parsing results")
+
         if not args.dry_run:
             parse_outputs(config['experiment_dir'], 1)
+
+        zulip_notify("Experiment finished in **{elapsed}** seconds.\nView results here: {url}".format(
+            elapsed=round(elapsed,3),
+            url="http://localhost:8080/{}".format(config['experiment_name']),
+        ))

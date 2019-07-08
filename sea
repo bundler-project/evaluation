@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+
+from seashells.seashells import main
+from zulip_notify import zulip_notify
+
+def connect_callback(data):
+    url = data.decode().split(" ")[2]
+    with open('curr_url', 'w') as f:
+        f.write(url)
+
+main(connect_callback)
