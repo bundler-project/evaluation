@@ -15,6 +15,7 @@ import subprocess
 from util import *
 from traffic import *
 from ccp import *
+from parse_outputs import parse_outputs
 
 ###################################################################################################
 # Parse arguments
@@ -469,7 +470,7 @@ def prepare_directories(config, conns):
             elif got == 'n':
                 sys.exit(1)
 
-    os.makedirs(os.path.expanduser(config['experiment_dir']))
+    os.makedirs(os.path.expanduser(config['experiment_dir']), exist_ok=True)
 
     for (addr, conn) in conns.items():
         if config['args'].verbose:
@@ -696,5 +697,5 @@ if __name__ == "__main__":
                 except:
                     warn("could not get file {}".format(fname))
 
-    ### if simulation, otherwise dont need to put outbox thing in a separate script
-    ###################################################################################################
+        if not args.dry_run:
+            parse_outputs(config['experiment_dir'], 1)
