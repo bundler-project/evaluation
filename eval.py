@@ -634,7 +634,7 @@ if __name__ == "__main__":
         details=args.details,
         total_exps=total_exps,
         sea_url=sea_url
-    ))
+    ), dry=args.dry_run)
 
     for i,exp in enumerate(exps):
         if exp.alg == "nobundler" and exp.sch != "fifo":
