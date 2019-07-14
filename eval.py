@@ -756,5 +756,5 @@ if __name__ == "__main__":
 
         zulip_notify("Experiment finished in **{elapsed}** seconds.\nView results here: {url}".format(
             elapsed=round(elapsed,3),
-            url="http://localhost:8080/{}".format(config['experiment_name']),
-        ))
+            url="http://128.52.187.169:8080/{}".format(config['experiment_name']),
+        ), dry=args.dry_run)
