@@ -243,7 +243,7 @@ def kill_leftover_procs(config, conns):
     for (addr, conn) in conns.items():
         if args.verbose:
             agenda.subtask(addr)
-        proc_regex = "|".join(["inbox", "outbox", *config['ccp'].keys(), "iperf", "etgClient", "etgServer"])
+        proc_regex = "|".join(["inbox", "outbox", *config['ccp'].keys(), "iperf", "etgClient", "etgServer", "ccp_const"])
         conn.run(
             "pkill -9 \"({search})\"".format(
                 search=proc_regex
