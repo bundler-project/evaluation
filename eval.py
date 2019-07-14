@@ -699,7 +699,7 @@ if __name__ == "__main__":
             rtt=exp.rtt,
             seed=exp.seed,
             bundle=",".join(str(b) for b in bundle_traffic),
-            cross=",".join(str(c) for c in cross_traffic)
+            cross="+".join(str(c) for c in cross_traffic)
         )
 
         config['iteration_dir'] = os.path.join(config['experiment_dir'], iteration_name)
