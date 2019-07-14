@@ -312,6 +312,26 @@ def check_inbox(config, inbox):
 
     check_ccp_alg(config, inbox)
 
+def check_commits(config, machines):
+
+    config['commits']['inbox'] = {}
+    branch = machines['inbox'].run("git -C {} rev-parse --abbrev-ref HEAD".format(config['structure']['bundler_dir'])).stdout.strip()
+    commit = machines['inbox'].run("git -C {} rev-parse HEAD".format(config['structure']['bundler_dir'])).stdout.strip()
+    config['commits']['inbox']['bundler'] = "{}:{}".format(branch, commit)
+
+    for (alg, details) in config['ccp'].items():
+        alg_dir = get_ccp_alg_dir(config, alg)
+        final_branch = machines['inbox'].run("git -C {} rev-parse --abbrev-ref HEAD".format(alg_dir)).stdout.strip()
+        final_commit = machines['inbox'].run("git -C {} rev-parse HEAD".format(alg_dir)).stdout.strip()
+        config['commits']['inbox'][alg] = "{}:{}".format(final_branch, final_commit)
+
+    config['commits']['receiver'] = {}
+    alg_dir = get_ccp_alg_dir(config, 'const')
+    final_branch = machines['receiver'].run("git -C {} rev-parse --abbrev-ref HEAD".format(alg_dir)).stdout.strip()
+    final_commit = machines['receiver'].run("git -C {} rev-parse HEAD".format(alg_dir)).stdout.strip()
+    config['commits']['receiver'][alg] = "{}:{}".format(final_branch, final_commit)
+
+
 def check_outbox(config, outbox):
     agenda.subtask("outbox")
 
@@ -603,6 +623,16 @@ if __name__ == "__main__":
         check_inbox(config, machines['inbox'])
         check_outbox(config, machines['outbox'])
         check_receiver(config, machines['receiver'])
+
+    config['commits'] = {}
+    check_commits(config, machines)
+    commits_md = os.path.join(os.path.expanduser(config['experiment_dir']), 'commits.md')
+    with open(commits_md, 'w') as f:
+        for m, commits in config['commits'].items():
+            f.write("[{}]\n".format(m))
+            for k, commit in commits.items():
+                f.write("{} = {}\n".format(k, commit))
+            f.write("\n")
 
     agenda.section("Starting experiments")
 
