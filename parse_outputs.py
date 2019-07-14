@@ -4,6 +4,7 @@ import glob
 from tqdm import tqdm
 import re
 from graph import write_rmd
+import subprocess
 
 class DoubleWriter(object):
     def __init__(self, fs):
@@ -15,21 +16,28 @@ class DoubleWriter(object):
 
 def parse_ccp_log(f, out, header, prepend, fields, sample_rate):
     i=0
+    e2 = None
     for l in f:
+        if 'elasticity_inf' in l:
+            if i % sample_rate == 0:
+                sp = l.strip().split(" ")
+                e2 = round(float(sp[13].replace(",", "")),3)
         if 'rin' in l:
             if i % sample_rate == 0:
                 sp = l.strip().replace(",", "").split(" ")
                 out.write(
                     prepend + "," + 
                     ','.join([str(round(float(sp[field-1]),3)) for field in fields]) + 
+                    ',' + (str(e2) if e2 else '') +
                     "\n"
                 )
+            e2=None
             i+=1
 
 def post_process_dir(d, global_out_fname, sample_rate):
     fields = [9,17,19,27,29,35,13]
     exp_header = "bw,delay,qlen,alpha,beta,bg,cross,seed"
-    log_header = "elapsed,rtt,zt,rout,rin,curr_rate,qlen"
+    log_header = "elapsed,rtt,zt,rout,rin,curr_rate,curr_q,elasticity2"
     header = exp_header + "," + log_header
     pattern = re.compile('fifo_(?P<bw>[\d]+)_(?P<delay>[\d]+)/nimbus.bundler_qlen=(?P<qlen>[\d]+).bundler_qlen_alpha=(?P<alpha>[\d]+).bundler_qlen_beta=(?P<beta>[\d]+)/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/ccp.log')
 
@@ -46,12 +54,38 @@ def post_process_dir(d, global_out_fname, sample_rate):
             parse_ccp_log(f, w, header, prepend, fields, sample_rate)
     global_out.close()
 
+    g = glob.glob(d + "/**/downlink.log", recursive=True)
+    for exp in tqdm(g):
+        exp_root = "/".join(exp.split("/")[:-1])
+        exp_root = os.path.dirname(exp)
+        #if not os.path.isfile(os.path.join(exp_root, "mm-graph.tmp")):
+        subprocess.check_output("mm-graph {} 50 --fake --plot-direction ingress --agg \"5000=bundle,8001:8004=cross\"".format(exp), shell=True, executable="/bin/bash")
+        subprocess.check_output("mv /tmp/mm-graph.tmp {}".format(exp_root), shell=True)
 
-def parse_outputs(root_path, sample_rate=1):
-    experiment_root = os.path.expanduser(root_path)
+def parse_outputs(root_path, graph_kwargs={}):
+    experiment_root = os.path.abspath(os.path.expanduser(root_path))
     global_out_fname = os.path.join(experiment_root, 'ccp.parsed')
+
+    if 'downsample' in graph_kwargs:
+        sample_rate = graph_kwargs['downsample']
+    else:
+        sample_rate = 1
+
     post_process_dir(experiment_root, global_out_fname, sample_rate)
-    write_rmd(experiment_root, global_out_fname)
+
+
+    write_rmd(experiment_root, global_out_fname, **graph_kwargs)
 
 if __name__ == "__main__":
-    parse_outputs(sys.argv[1], int(sys.argv[2]))
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Parse bundler experiment logs and graph results")
+    parser.add_argument("root", help="Root directory containing all experiments to be plotted")
+    parser.add_argument("--downsample", type=int, help="Downsamples to 1/N of all log lines for faster plotting")
+    parser.add_argument("--fields", help="Which fields to plot")
+    parser.add_argument("--rows", help="(Column name) by which to split into a grid vertically")
+    parser.add_argument("--cols", help="(Column name) by which to split into a grid horizontally")
+    args = parser.parse_args()
+    graph_kwargs = dict((k,v) for k,v in vars(args).items() if (v and not k=='root'))
+
+    parse_outputs(args.root, graph_kwargs=graph_kwargs)

@@ -752,7 +752,7 @@ if __name__ == "__main__":
         agenda.task("parsing results")
 
         if not args.dry_run:
-            parse_outputs(config['experiment_dir'], 1)
+            parse_outputs(config['experiment_dir'], {'downsample' : 1, 'rows' : 'cross'})
 
         zulip_notify("Experiment finished in **{elapsed}** seconds.\nView results here: {url}".format(
             elapsed=round(elapsed,3),
