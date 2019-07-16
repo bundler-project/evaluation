@@ -1,8 +1,16 @@
 import zulip
 
-client = zulip.Client(config_file="~/zuliprc")
+client = None
 
 def zulip_notify(msg, dry=False):
+    if client is None:
+        try:
+            client = zulip.Client(config_file="~/zuliprc")
+        except:
+            pass
+
+    if client is None:
+        return
 
     if dry:
         req = {
