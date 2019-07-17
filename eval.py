@@ -129,7 +129,7 @@ def check_config(config):
                     assert t['dist'], "{} missing 'dist' (str)".format(traffic_type)
                     assert t['load'], "{} missing 'load' (str)".format(traffic_type)
                     assert t['alg'], "{} missing 'alg' (str)".format(traffic_type)
-                    assert t['backlogged'], "{} missing 'backlogged' (int)".format(traffic_type)
+                    assert 'backlogged' in t, "{} missing 'backlogged' (int)".format(traffic_type)
                 if t['source'] == 'cbr':
                     assert t['length'], "{} missing 'length (int)'".format(traffic_type)
                     assert t['port'], "{} missing 'port (int)'".format(traffic_type)
