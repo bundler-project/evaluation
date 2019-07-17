@@ -420,9 +420,14 @@ done
                     jitter=emulation_env.ecmp.mean_jitter,
                     nonwc=(1 if emulation_env.ecmp.nonworkconserving else 0)
             )
+            elif emulation_env.sfq:
+                queue_args = '--downlink-queue="akshayfq" --downlink-queue-args="queues={queues},packets={buf}" --uplink-queue="droptail" --uplink-queue-args="packets={buf}"'.format(
+                    queues=500, # TODO arbitrary for now
+                    buf=buf_pkts,
+                )
             else:
                 queue_args = '--downlink-queue="droptail" --uplink-queue="droptail" --downlink-queue-args="packets={buf}" --uplink-queue-args="packets={buf}"'.format(
-                        buf=buf_pkts
+                    buf=buf_pkts
                 )
         if config['args'].dry_run:
             print("cat mm_inner.sh\n{}".format(mm_inner.getvalue()))
@@ -539,7 +544,7 @@ def prepare_iteration_dir(config, conns):
             "Failed to create iteration directory {}".format(config['iteration_dir'])
         )
 
-MahimahiConfig = namedtuple('MahimahiConfig', ['rtt', 'rate', 'ecmp', 'num_bdp'])
+MahimahiConfig = namedtuple('MahimahiConfig', ['rtt', 'rate', 'ecmp', 'sfq', 'num_bdp'])
 
 def start_tcpprobe(config, sender):
     if config['args'].verbose:
@@ -679,7 +684,7 @@ if __name__ == "__main__":
     total_elapsed = 0
 
     for i,exp in enumerate(exps):
-        if exp.alg == "nobundler" and exp.sch != "fifo":
+        if exp.alg == "nobundler" and not exp.sch in ["fifo", "sfq"]:
             agenda.subtask("skipping...")
             continue
 
@@ -693,7 +698,13 @@ if __name__ == "__main__":
 
         bundle_traffic = list(create_traffic_config(exp.bundle_traffic, exp))
         cross_traffic = list(create_traffic_config(exp.cross_traffic, exp))
-        env = MahimahiConfig(rate=exp.rate, rtt=exp.rtt, num_bdp=exp.bdp, ecmp=None)
+        env = MahimahiConfig(
+            rate=exp.rate,
+            rtt=exp.rtt,
+            num_bdp=exp.bdp,
+            sfq=(exp.alg == "nobundler" and exp.sch == "sfq"),
+            ecmp=None
+        )
 
         exp_alg_iteration_name = ""
         if type(exp.alg) == type({}):
