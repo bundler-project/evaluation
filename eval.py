@@ -364,22 +364,29 @@ def check_receiver(config, receiver):
     agenda.subtask("CCP (receiver)")
     #check_ccp_alg(config, receiver)
 
-def start_outbox(config, outbox, emulation_env=None, bundle_client=None, cross_client=None):
-    outbox_cmd = "sudo {path} --filter \"{pcap_filter}\" --iface {iface} --inbox {inbox_addr} --sample_rate {sample_rate} {extra}".format(
-        path=get_outbox_binary(config),
-        pcap_filter="src portrange {}-{}".format(config['parameters']['bg_port_start'], config['parameters']['bg_port_end']),
-        iface="ingress" if emulation_env else config['topology']['outbox']['ifaces'][0]['dev'],
-        inbox_addr='{}:{}'.format(config['topology']['inbox']['ifaces'][1]['addr'], config['topology']['inbox']['listen_port']),
-        sample_rate=config['parameters']['initial_sample_rate'],
-        extra="--no_ethernet" if emulation_env else '',
-    )
+def start_outbox(config, outbox, emulation_env=None, bundle_client=None, cross_client=None, nobundler=False):
     outbox_output = os.path.join(config['iteration_dir'], 'outbox.log')
+    if nobundler:
+        outbox_run = "echo 'nobundler' > {outbox_output}".format(outbox_output=outbox_output)
+    else:
+        outbox_cmd = "sudo {path} --filter \"{pcap_filter}\" --iface {iface} --inbox {inbox_addr} --sample_rate {sample_rate} {extra}".format(
+            path=get_outbox_binary(config),
+            pcap_filter="src portrange {}-{}".format(config['parameters']['bg_port_start'], config['parameters']['bg_port_end']),
+            iface="ingress" if emulation_env else config['topology']['outbox']['ifaces'][0]['dev'],
+            inbox_addr='{}:{}'.format(config['topology']['inbox']['ifaces'][1]['addr'], config['topology']['inbox']['listen_port']),
+            sample_rate=config['parameters']['initial_sample_rate'],
+            extra="--no_ethernet" if emulation_env else '',
+        )
+        outbox_run = "{outbox_cmd} > {outbox_output} 2> {outbox_output} &".format(
+            outbox_cmd = outbox_cmd,
+            outbox_output = outbox_output,
+        )
 
     mm_inner = io.StringIO()
     mm_inner.write("""#!/bin/bash
 set -x
 
-{outbox_cmd} > {outbox_output} 2> {outbox_output} &
+{outbox_run}
 
 sleep 1
 
@@ -391,8 +398,7 @@ for pid in ${{pids[*]}}; do
     wait $pid
 done
 """.format(
-        outbox_cmd=outbox_cmd,
-        outbox_output=outbox_output,
+        outbox_run=outbox_run,
         cross_clients='\n'.join(["({}) &\npids+=($!)".format(c) for c in cross_client]),
         bundle_clients='\n'.join(["({}) &\npids+=($!)".format(c) for c in bundle_client]),
     ))
@@ -727,9 +733,10 @@ if __name__ == "__main__":
         ##### RUN EXPERIMENT
 
         start = time.time()
-        inbox_out = start_inbox(config, machines['inbox'], exp.sch, config['parameters']['qdisc_buf_size'])
-        ccp_out = start_ccp(config, machines['inbox'], exp.alg)
-        machines['inbox'].check_file('Inbox ready', inbox_out)
+        if exp.alg != "nobundler":
+            inbox_out = start_inbox(config, machines['inbox'], exp.sch, config['parameters']['qdisc_buf_size'])
+            ccp_out = start_ccp(config, machines['inbox'], exp.alg)
+            machines['inbox'].check_file('Inbox ready', inbox_out)
 
         if config['args'].tcpprobe:
             #TODO figure out how to check for and kill dd, it's a substring in other process names
@@ -741,7 +748,14 @@ if __name__ == "__main__":
 
         bundle_client = list(start_multiple_client(config, machines['receiver'], bundle_traffic, True, execute=False))
         cross_client = list(start_multiple_client(config, machines['receiver'], cross_traffic, False, execute=False))
-        start_outbox(config, machines['outbox'], emulation_env=env, bundle_client=bundle_client, cross_client=cross_client)
+        start_outbox(
+                config,
+                machines['outbox'],
+                emulation_env=env,
+                bundle_client=bundle_client,
+                cross_client=cross_client,
+                nobundler = (exp.alg == "nobundler"),
+        )
 
         elapsed = time.time() - start
         total_elapsed += elapsed
