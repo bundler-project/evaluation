@@ -40,6 +40,9 @@ parser.add_argument('--skip-existing', action='store_true', dest='skip_existing'
         help="if supplied, if results already exist for a given experiment, that experiment will be skipped and results preserved, good for finishing an incomplete experiment")
 parser.add_argument('--tcpprobe', action='store_true', dest='tcpprobe',
         help="if supplied, run tcpprobe at the sender")
+parser.add_argument('--rows', type=str, help="rows to split graph upon", default='')
+parser.add_argument('--cols', type=str, help="cols to split graph upon", default='')
+parser.add_argument('--downsample', type=int, default=1, help="how much to downsample measurements")
 parser.add_argument('--name', type=str, help="name of experiment directory", required=True)
 parser.add_argument('--details', type=str, help="extra information to include in experiment report")
 ###################################################################################################
@@ -117,6 +120,7 @@ def check_config(config):
     for traffic_type in ['bundle_traffic', 'cross_traffic']:
         for traffic in config['experiment'][traffic_type]:
             for t in traffic:
+                print(t)
                 assert t['source'] in sources, "{} traffic source must be one of ({})".format(traffic_type, "|".join(sources))
                 assert 'start_delay' in t, "{} missing start_delay (int)".format(traffic_type) 
                 if t['source'] == 'iperf':
@@ -666,6 +670,8 @@ if __name__ == "__main__":
         sea_url=sea_url
     ), dry=args.dry_run)
 
+    total_elapsed = 0
+
     for i,exp in enumerate(exps):
         if exp.alg == "nobundler" and exp.sch != "fifo":
             agenda.subtask("skipping...")
@@ -698,7 +704,7 @@ if __name__ == "__main__":
             rate=exp.rate,
             rtt=exp.rtt,
             seed=exp.seed,
-            bundle=",".join(str(b) for b in bundle_traffic),
+            bundle="+".join(str(b) for b in bundle_traffic),
             cross="+".join(str(c) for c in cross_traffic)
         )
 
@@ -738,6 +744,7 @@ if __name__ == "__main__":
         start_outbox(config, machines['outbox'], emulation_env=env, bundle_client=bundle_client, cross_client=cross_client)
 
         elapsed = time.time() - start
+        total_elapsed += elapsed
         agenda.subtask("Ran for {} seconds".format(elapsed))
         kill_leftover_procs(config, conns)
 
@@ -746,15 +753,21 @@ if __name__ == "__main__":
             if m != config['self']: 
                 try:
                     m.get(os.path.expanduser(fname), local=os.path.expanduser(os.path.join(config['iteration_dir'], os.path.basename(fname))))
-                except:
-                    warn("could not get file {}".format(fname))
+                except Exception as e:
+                    warn("could not get file {}: {}".format(fname, e), exit=False)
 
-        agenda.task("parsing results")
+    agenda.task("parsing results")
 
-        if not args.dry_run:
-            parse_outputs(config['experiment_dir'], {'downsample' : 1, 'rows' : 'cross'})
+    if not args.dry_run:
+        parse_args = {'downsample' : config['args'].downsample}
+        if config['args'].rows:
+            parse_args['rows'] = config['args'].rows
+        if config['args'].cols:
+            parser_args['cols'] = config['args'].cols
+        parse_outputs(config['experiment_dir'], parse_args)
 
-        zulip_notify("Experiment finished in **{elapsed}** seconds.\nView results here: {url}".format(
-            elapsed=round(elapsed,3),
-            url="http://128.52.187.169:8080/{}".format(config['experiment_name']),
-        ), dry=args.dry_run)
+    zulip_notify("{total_exps} experiment(s) finished in **{elapsed}** seconds.\nView results here: {url}".format(
+        total_exps=total_exps,
+        elapsed=round(total_elapsed,3),
+        url="http://128.52.187.169:8080/{}".format(config['experiment_name']),
+    ), dry=args.dry_run)

@@ -156,8 +156,8 @@ class CBRTraffic(Traffic):
             time.sleep(2)
 
         node.check_file('Server listening on TCP port', iperf_out)
-        node.check_proc("ccp_example_alg", ccp_out)
-        node.check_file('starting CCP Example', ccp_out)
+        node.check_proc("ccp_const", ccp_out)
+        node.check_file('starting CCP', ccp_out)
         config['iteration_outputs'].append((node, iperf_out))
         config['iteration_outputs'].append((node, ccp_out))
         return iperf_out
@@ -188,7 +188,7 @@ class PoissonTraffic(Traffic):
             agenda.subtask("Create ETG config file")
 
         if traffic.num_conns > 1000:
-            fatal_warn("Requestedp poisson traffic with more than 1000 connections, which would be outside of outbox portrange ({}-{})".format(
+            fatal_warn("Requested poisson traffic with more than 1000 connections, which would be outside of outbox portrange ({}-{})".format(
                 config['parameters']['bg_port_start'], config['parameters']['bg_port_end']
             ))
 
@@ -213,8 +213,8 @@ class PoissonTraffic(Traffic):
             delay=traffic.start_delay
         )
 
-        config['iteration_outputs'].append((node, etg_out + "_flows.log"))
-        config['iteration_outputs'].append((node, etg_out + "_reqs.log"))
+        config['iteration_outputs'].append((node, etg_out + "_flows.out"))
+        config['iteration_outputs'].append((node, etg_out + "_reqs.out"))
 
         if execute:
             expect(
@@ -297,7 +297,7 @@ def create_traffic_config(traffic, exp):
                 distribution=t['dist'],
                 congalg=t['alg'],
                 seed=exp.seed,
-                load=(int(eval(t['load'])) * exp.rate),
+                load=(int(eval(t['load']) * exp.rate)),
                 start_delay=t['start_delay'],
                 fanout='1 100'
         )
