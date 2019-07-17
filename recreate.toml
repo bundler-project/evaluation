@@ -1,22 +1,27 @@
 [topology]
-    [topology.local] 
-        name = "pd6.csail.mit.edu"
     [topology.sender]
-        name = "pd1.csail.mit.edu"
-        ifaces = [{dev = "em2", addr = "192.168.1.1"}]
+        name = "pd5.csail.mit.edu"
+        ifaces = [{dev = "em2", addr = "192.168.1.5"}]
     [topology.inbox]
-        name = "pd6.csail.mit.edu"
+        name = "pd2.csail.mit.edu"
         ifaces = [
-            {dev = "em2", addr = "192.168.1.6"},
-            {dev = "10gp1", addr = "10.1.1.6"},
+            {dev = "em2", addr = "192.168.1.2"},
+            {dev = "10gp1", addr = "10.1.1.2"},
         ]
         listen_port = 28316
+        self = true
     [topology.outbox]
-        name = "pd5.csail.mit.edu"
-        ifaces = [{dev = "10gp1", addr = "10.1.1.6"}]
+        name = "pd8.csail.mit.edu"
+        ifaces = [{dev = "10gp1", addr = "10.1.1.8"}]
     [topology.receiver]
-        name = "pd5.csail.mit.edu"
-        ifaces = [{dev = "10gp1", addr = "10.1.1.5"}]
+        name = "pd8.csail.mit.edu"
+        ifaces = [{dev = "10gp1", addr = "10.1.1.8"}]
+
+[sysctl]
+"net.ipv4.tcp_rmem" = "2048000 2048000 12582912"
+"net.ipv4.tcp_wmem" = "2048000 2048000 12582912"
+"net.core.wmem_max" = "12582912"
+"net.core.rmem_max" = "12582912"
 
 [parameters]
 initial_sample_rate = 128
@@ -24,7 +29,7 @@ bg_port_start = 5000
 qdisc_buf_size = "15mbit"
 
 [structure]
-bundler_root = "~/bundler-scripts"
+bundler_root = "~/bundler-script"
 etg_dir = "~/empirical-traffic-gen"
 etg_client = "bin/etgClient"
 etg_server = "run-servers.py"
@@ -37,56 +42,45 @@ outbox_target = "target/debug/outbox"
 CAIDA_CDF = "~/bundler-scripts/CAIDA_CDF"
 
 [ccp]
-    [ccp.copa]
-        repo = "https://github.com/akshayknarayan/ccp_copa.git"
-        branch = "rate_only"
-        commit = "latest"
-        language = "rust"
-        target = "target/debug/copa"
-        [ccp.copa.args]
-            delta_mode = "NoTCP"
-            default_delta = 0.125
     [ccp.nimbus]
         repo = "https://github.com/ccp-project/nimbus.git"
-        branch = "null_xtcp"
+        branch = "queue-control"
         commit = "latest"
         language = "rust"
         target = "target/debug/nimbus"
         [ccp.nimbus.args]
-            use_switching = "false"
+            use_switching = "true"
             flow_mode = "XTCP"
             loss_mode = "Bundle"
             bw_est_mode = "false"
-            #pulse_size = "0.25"
-            #bundler_qlen = "300"
     [ccp.const]
-        repo = "https://github.com/akshayknarayan/ccp_const_algorithm.git"
+        repo = "https://github.com/ccp-project/const.git"
         branch = "master"
         commit = "latest"
         language = "rust"
-        target = "target/release/ccp_example_alg"
+        target = "target/release/ccp_const"
 
 [experiment]
 #seed      = [0, 17, 26, 28, 41, 62, 67, 68, 88, 99]
 seed      = [0]
 sch       = ['fifo']
 alg       = [
-    {
-        name = 'nimbus',
-        pulse_size = ["0.25"]
-        #bundler_qlen_alpha = ["150.0"],
-        #bundler_qlen_beta = ["15000.0"]
-    }
+    { name = 'nimbus',
+        bundler_qlen = [300],
+        bundler_qlen_alpha = [50, 100, 200, 500], # [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000], # 1500 
+        bundler_qlen_beta =  [1000, 2000, 5000, 10000]} # [100, 1000, 2000, 5000, 10000, 20000, 50000, 100000] }  # 15000 }
 ]
 rate      = [96]
 rtt       = [50]
-bdp       = [3]
+bdp       = [2]
 bundle_traffic = [
-    [{source = 'iperf', alg = 'cubic', flows = 1, length = 30, port = 5000, start_delay = 0}],
-    #[{source = 'poisson', conns = 200, reqs = 10000, alg = 'reno', backlogged = 1, dist = 'CAIDA_CDF', load = '7/8'}]
+    [{source = 'iperf', alg = 'cubic', flows = 1, length = 230, port = 5000, start_delay = 0}],
+    [{source = 'iperf', alg = 'cubic', flows = 1, length = 250, port = 5500, start_delay = 0},
+    {source = 'poisson', conns = 200, reqs = 30000, alg = 'reno', dist = 'CAIDA_CDF', backlogged = 0, load = '1/2', start_delay = 0}],
 ]
 cross_traffic = [
-    [],
-    #[{source = 'cbr', length = 40, port = 8001, rate = 4000000, start_delay = 20}],
-    #[{source = 'iperf', alg = 'cubic', flows = 1, length = 40, port = 8001, start_delay = 20}]
+ #   [],
+    [{source = 'cbr', length = 60, port = 8001, rate = 32, cwnd_cap=1000, start_delay = 30},
+     {source = 'iperf', alg = 'cubic', flows = 1, length = 60, port = 8002, start_delay = 90},
+     {source = 'cbr', length = 60, port = 8003, rate = 32, cwnd_cap=1000, start_delay = 150}],
 ]

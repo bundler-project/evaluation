@@ -44,7 +44,7 @@ parser.add_argument('--rows', type=str, help="rows to split graph upon", default
 parser.add_argument('--cols', type=str, help="cols to split graph upon", default='')
 parser.add_argument('--downsample', type=int, default=1, help="how much to downsample measurements")
 parser.add_argument('--name', type=str, help="name of experiment directory", required=True)
-parser.add_argument('--details', type=str, help="extra information to include in experiment report")
+parser.add_argument('--details', type=str, help="extra information to include in experiment report", default="")
 ###################################################################################################
 
 def read_config(args):
@@ -122,7 +122,7 @@ def check_config(config):
             for t in traffic:
                 print(t)
                 assert t['source'] in sources, "{} traffic source must be one of ({})".format(traffic_type, "|".join(sources))
-                assert 'start_delay' in t, "{} missing start_delay (int)".format(traffic_type) 
+                assert 'start_delay' in t, "{} missing start_delay (int)".format(traffic_type)
                 if t['source'] == 'iperf':
                     assert t['alg'], "{} missing 'alg' (str)".format(traffic_type)
                     assert t['flows'], "{} missing 'flows' (int)".format(traffic_type)
@@ -750,7 +750,7 @@ if __name__ == "__main__":
 
         agenda.subtask("collecting results")
         for (m, fname) in config['iteration_outputs']:
-            if m != config['self']: 
+            if m != config['self']:
                 try:
                     m.get(os.path.expanduser(fname), local=os.path.expanduser(os.path.join(config['iteration_dir'], os.path.basename(fname))))
                 except Exception as e:

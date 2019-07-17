@@ -3,6 +3,7 @@ import zulip
 client = None
 
 def zulip_notify(msg, dry=False):
+    global client
     if client is None:
         try:
             client = zulip.Client(config_file="~/zuliprc")
