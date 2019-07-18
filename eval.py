@@ -590,7 +590,10 @@ def flatten(exps, dim):
         xs = [(k, dct[k]) for k in dct]
         expl = [(a,b) for a,b in xs if type(b) == type([])]
         done = [(a,b) for a,b in xs if type(b) != type([])]
-        ks, bs = zip(*expl)
+        if len(expl) > 0:
+            ks, bs = zip(*expl)
+        else:
+            ks, bs = ([], [])
         bs = list(itertools.product(*bs))
         expl = [dict(done + list(zip(ks, b))) for b in bs]
         return expl
@@ -684,7 +687,7 @@ if __name__ == "__main__":
     total_elapsed = 0
 
     for i,exp in enumerate(exps):
-        if exp.alg == "nobundler" and not exp.sch in ["fifo", "sfq"]:
+        if exp.alg['name'] == "nobundler" and not exp.sch in ["fifo", "sfq"]:
             agenda.subtask("skipping...")
             continue
 
@@ -702,16 +705,14 @@ if __name__ == "__main__":
             rate=exp.rate,
             rtt=exp.rtt,
             num_bdp=exp.bdp,
-            sfq=(exp.alg == "nobundler" and exp.sch == "sfq"),
+            sfq=(exp.alg['name'] == "nobundler" and exp.sch == "sfq"),
             ecmp=None
         )
 
         exp_alg_iteration_name = ""
         if type(exp.alg) == type({}):
             name = exp.alg['name']
-            del exp.alg['name']
-            exp_alg_iteration_name = name + "." + ".".join("{}={}".format(k,v) for k,v in exp.alg.items())
-            exp.alg['name'] = name
+            exp_alg_iteration_name = name + "." + ".".join("{}={}".format(k,v) for k,v in exp.alg.items() if k is not 'name')
         else:
             exp_alg_iteration_name = exp.alg
 
@@ -744,7 +745,7 @@ if __name__ == "__main__":
         ##### RUN EXPERIMENT
 
         start = time.time()
-        if exp.alg != "nobundler":
+        if exp.alg['name'] != "nobundler":
             inbox_out = start_inbox(config, machines['inbox'], exp.sch, config['parameters']['qdisc_buf_size'])
             ccp_out = start_ccp(config, machines['inbox'], exp.alg)
             machines['inbox'].check_file('Inbox ready', inbox_out)
@@ -765,7 +766,7 @@ if __name__ == "__main__":
                 emulation_env=env,
                 bundle_client=bundle_client,
                 cross_client=cross_client,
-                nobundler = (exp.alg == "nobundler"),
+                nobundler = (exp.alg['name'] == "nobundler"),
         )
 
         elapsed = time.time() - start
