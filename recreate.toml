@@ -80,7 +80,7 @@ bundle_traffic = [
     ]
 ]
 cross_traffic = [
-    []
+    [],
     [
         {source = 'iperf', alg = 'cubic', flows = 1, length = 60, port = 8002, start_delay = 5},
     ]

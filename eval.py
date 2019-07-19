@@ -107,6 +107,7 @@ def check_config(config):
     assert len(config['experiment']['seed']) > 0, "must specify at least one seed"
     assert len(config['experiment']['sch']) > 0, "must specify at least one scheduler (sch)"
     assert len(config['experiment']['alg']) > 0, "must specify at least one algorithm (alg)"
+    assert all('name' in a for a in config['experiment']['alg']), "algs must have key name"
     assert len(config['experiment']['rate']) > 0, "must specify at least one rate"
     assert len(config['experiment']['rtt']) > 0, "must specify at least one rtt"
     assert len(config['experiment']['bdp']) > 0, "must specify at least one bdp"
@@ -709,12 +710,8 @@ if __name__ == "__main__":
             ecmp=None
         )
 
-        exp_alg_iteration_name = ""
-        if type(exp.alg) == type({}):
-            name = exp.alg['name']
-            exp_alg_iteration_name = name + "." + ".".join("{}={}".format(k,v) for k,v in exp.alg.items() if k is not 'name')
-        else:
-            exp_alg_iteration_name = exp.alg
+        name = exp.alg['name']
+        exp_alg_iteration_name = name + "." + ".".join("{}={}".format(k,v) for k,v in exp.alg.items() if k != 'name')
 
         iteration_name = "{sch}_{rate}_{rtt}/{alg}/b={bundle}_c={cross}/{seed}".format(
             sch=exp.sch,
@@ -761,12 +758,12 @@ if __name__ == "__main__":
         bundle_client = list(start_multiple_client(config, machines['receiver'], bundle_traffic, True, execute=False))
         cross_client = list(start_multiple_client(config, machines['receiver'], cross_traffic, False, execute=False))
         start_outbox(
-                config,
-                machines['outbox'],
-                emulation_env=env,
-                bundle_client=bundle_client,
-                cross_client=cross_client,
-                nobundler = (exp.alg['name'] == "nobundler"),
+            config,
+            machines['outbox'],
+            emulation_env=env,
+            bundle_client=bundle_client,
+            cross_client=cross_client,
+            nobundler = (exp.alg['name'] == "nobundler"),
         )
 
         elapsed = time.time() - start

@@ -10,8 +10,6 @@ def get_ccp_alg_dir(config, alg):
     return alg_dir
 
 def get_ccp_binary_path(config, alg):
-    if type(alg) == type({}):
-        alg = alg['name']
     alg_config = config['ccp'][alg]
     alg_dir = get_ccp_alg_dir(config, alg)
 
@@ -76,25 +74,14 @@ def start_ccp(config, inbox, alg):
     if config['args'].verbose:
         agenda.subtask("Starting ccp")
 
-    ccp_binary = get_ccp_binary_path(config, alg)
+    ccp_binary = get_ccp_binary_path(config, alg['name'])
     ccp_binary_name = ccp_binary.split('/')[-1]
     ccp_out = os.path.join(config['iteration_dir'], "ccp.log")
 
-    alg_args = []
-
-    if type(alg) == type({}):
-        alg_name = alg['name']
-        del alg['name']
-    else:
-        alg_name = alg
-
+    alg_name = alg['name']
     args = list(config['ccp'][alg_name]['args'].items())
-    if type(alg) == type({}):
-        args += [(k,alg[k]) for k in alg]
-
-    for (arg, val) in args:
-        if val != "false":
-            alg_args.append("--{}={}".format(arg, val))
+    args += [(k,alg[k]) for k in alg]
+    alg_args = [f"--{arg}={val}" for arg, val in args if val != "false" and arg != "name"]
 
     expect(inbox.run(
         "{} --ipc=unix {}".format(
