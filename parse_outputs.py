@@ -92,6 +92,8 @@ def parse_ccp_logs(dirname, sample_rate):
                 parse_ccp_log(f, w, out_switch, header, prepend, fields, sample_rate)
     global_out.close()
 
+    return global_out_fname
+
 def parse_mahimahi_logs(dirname, sample_rate):
     g = glob.glob(dirname + "/**/downlink.log", recursive=True)
     for exp in tqdm(g):
@@ -122,11 +124,11 @@ def parse_outputs(root_path, graph_kwargs={}):
     else:
         sample_rate = 1
 
-    parse_ccp_logs(experiment_root, sample_rate)
+    global_out_fname = parse_ccp_logs(experiment_root, sample_rate)
     parse_mahimahi_logs(experiment_root, sample_rate)
     parse_etg_logs(experiment_root)
 
-    #write_rmd(experiment_root, global_out_fname, **graph_kwargs)
+    write_rmd(experiment_root, global_out_fname, **graph_kwargs)
 
 if __name__ == "__main__":
     import argparse
