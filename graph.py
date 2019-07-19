@@ -51,8 +51,17 @@ ggplotly(plt_m_{i})
         for (i,path) in enumerate(g)
     ])
 
+    if len(g) < 3:
+        overview_fig_height = len(g) * 4
+    elif len(g) < 10:
+        overview_fig_height = len(g) * 2
+    elif len(g) < 50:
+        overview_fig_height = len(g) * 0.5
+    else:
+        overview_fig_height = 30
+
     overview = """
-```{{r plot1, fig.width=15, fig.height=25, fig.align='center', echo=FALSE}}
+```{{r plot1, fig.width=15, fig.height={fig_height}, fig.align='center', echo=FALSE}}
 df <- read.csv("{csv}", sep=",", na.strings=c("","none"))
 df <- df %>% gather("measurement", "value", {fields})
 plt <- ggplot(df, aes(x=elapsed, y=value, color=measurement)) +
@@ -67,6 +76,7 @@ ggplotly(plt)
         fields = fields,
         wrap_str = wrap_str,
         nrow = len(g),
+        fig_height = overview_fig_height
     )
 
     contents = """
