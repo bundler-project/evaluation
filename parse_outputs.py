@@ -111,7 +111,8 @@ def parse_etg_logs(dirname):
         exp_root = exp_root.split(dirname)[-1]
         _, setup, alg, traffic, seed = exp_root.split("/")
         sch, bw, rtt = setup.split("_")
-        subprocess.check_output(f"awk '{{print \"sch:{sch}, bw:{bw}, rtt:{rtt}, alg:{alg}, traffic:{traffic}, seed:{seed} \"$0}}' {exp} | python3 columnize.py >> {outf}", shell=True)
+        subprocess.check_output(f"awk '{{print \"sch:{sch}, bw:{bw}, rtt:{rtt}, alg:{alg}, traffic:{traffic}, seed:{seed} \"$0}}' {exp} >> tmp", shell=True)
+    subprocess.call(f"python3 columnize.py < tmp > {outf} && rm tmp", shell=True)
 
 def parse_outputs(root_path, graph_kwargs={}):
     experiment_root = os.path.abspath(os.path.expanduser(root_path))
