@@ -318,7 +318,6 @@ def check_inbox(config, inbox):
     check_ccp_alg(config, inbox)
 
 def check_commits(config, machines):
-
     config['commits']['inbox'] = {}
     branch = machines['inbox'].run("git -C {} rev-parse --abbrev-ref HEAD".format(config['structure']['bundler_dir'])).stdout.strip()
     commit = machines['inbox'].run("git -C {} rev-parse HEAD".format(config['structure']['bundler_dir'])).stdout.strip()

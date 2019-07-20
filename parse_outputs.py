@@ -1,18 +1,10 @@
-import sys
-import os
-import glob
-from tqdm import tqdm
-import re
 from graph import write_rmd
+import agenda
+import glob
+import os
+import re
 import subprocess
-
-class DoubleWriter(object):
-    def __init__(self, fs):
-        self.fs = fs
-
-    def write(self, data):
-        for f in self.fs:
-            f.write(data)
+import sys
 
 def parse_ccp_log(f, out, out_switch, header, prepend, fields, sample_rate):
     i=0
@@ -70,51 +62,63 @@ def parse_ccp_log(f, out, out_switch, header, prepend, fields, sample_rate):
         out_switch.write("{},{},-Inf,Inf\n".format(xmin,xmax))
 
 def parse_ccp_logs(dirname, sample_rate):
-    global_out_fname = os.path.join(dirname, 'ccp.parsed')
+    agenda.subtask("ccp logs")
     fields = [9,17,19,27,29,35,13]
-    exp_header = "bw,delay,qlen,alpha,beta,bundle,cross,seed"
     log_header = "elapsed,rtt,zt,rout,rin,curr_rate,curr_q,elasticity2"
-    header = exp_header + "," + log_header
-    pattern = re.compile('fifo_(?P<bw>[\d]+)_(?P<delay>[\d]+)/nimbus.bundler_qlen=(?P<qlen>[\d]+).bundler_qlen_alpha=(?P<alpha>[\d]+).bundler_qlen_beta=(?P<beta>[\d]+)/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/ccp.log')
+    pattern = re.compile('(?P<sch>[a-z]+)_(?P<bw>[\d]+)_(?P<delay>[\d]+)/nimbus.(?P<args>[a-z_]+=[a-z_0-9]+)+/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/ccp.log')
 
     g = glob.glob(dirname + "/**/ccp.log", recursive=True)
-    global_out = open(global_out_fname, "w")
-    global_out.write(header + "\n")
-    for exp in tqdm(g):
-        print(exp)
+    for exp in g:
         exp_root = "/".join(exp.split("/")[:-1])
         with open(exp) as f, open(os.path.join(exp_root, "ccp.parsed"), 'w') as out, open(os.path.join(exp_root, "ccp_switch.parsed"), 'w') as out_switch:
-            out.write(header + "\n")
             matches = pattern.search(exp)
             if matches is not None:
-                prepend = ','.join(matches.groups())
-                w = DoubleWriter([global_out, out])
-                parse_ccp_log(f, w, out_switch, header, prepend, fields, sample_rate)
-    global_out.close()
+                sch, bw, delay, args, bg, cross, seed = matches.group('sch', 'bw', 'delay', 'args', 'bg', 'cross', 'seed')
+                args = [a.split("=") for a in args.split(".")]
+                exp_header = f"sch,bw,delay,{','.join(a[0] for a in args)},bundle,cross,seed"
+                header = exp_header + "," + log_header
+                out.write(header + "\n")
+                prepend = f"{sch},{bw},{delay},{','.join(a[1] for a in args)},{bg},{cross},{seed}"
+                parse_ccp_log(f, out, out_switch, header, prepend, fields, sample_rate)
+            else:
+                print(f"skipping {exp}, no regex match")
+
+    global_out_fname = os.path.join(dirname, 'ccp.parsed')
+    subprocess.call(f"rm -f {global_out_fname}", shell=True)
+    g = glob.glob(dirname + "/**/ccp.parsed", recursive=True)
+    tail = 1
+    for exp in g:
+        if exp != global_out_fname:
+            subprocess.call(f"tail -n +{tail} {exp} >> {global_out_fname}", shell=True)
+            if tail == 1:
+                tail = 2
 
     return global_out_fname
 
 def parse_mahimahi_logs(dirname, sample_rate):
+    agenda.subtask("mahimahi logs")
     g = glob.glob(dirname + "/**/downlink.log", recursive=True)
-    for exp in tqdm(g):
-        print(exp)
+    for exp in g:
         exp_root = "/".join(exp.split("/")[:-1])
         exp_root = os.path.dirname(exp)
         subprocess.check_output("mm-graph {} 50 --fake --plot-direction ingress --agg \"5000:6000=bundle,8001:8004=cross\"".format(exp), shell=True, executable="/bin/bash")
         subprocess.check_output("mv /tmp/mm-graph.tmp {}".format(exp_root), shell=True)
 
 def parse_etg_logs(dirname):
+    agenda.subtask("etg logs")
     outf = os.path.join(dirname, "fcts.data")
     g = glob.glob(dirname + "/**/*reqs.out", recursive=True)
-    for exp in tqdm(g):
-        print(exp)
+    some = None
+    for exp in g:
+        some = True
         exp_root = "/".join(exp.split("/")[:-1])
         exp_root = os.path.dirname(exp)
         exp_root = exp_root.split(dirname)[-1]
         _, setup, alg, traffic, seed = exp_root.split("/")
         sch, bw, rtt = setup.split("_")
         subprocess.check_output(f"awk '{{print \"sch:{sch}, bw:{bw}, rtt:{rtt}, alg:{alg}, traffic:{traffic}, seed:{seed} \"$0}}' {exp} >> tmp", shell=True)
-    subprocess.call(f"python3 columnize.py < tmp > {outf} && rm tmp", shell=True)
+    if some:
+        subprocess.call(f"python3 columnize.py < tmp > {outf} && rm tmp", shell=True)
 
 def parse_outputs(root_path, graph_kwargs={}):
     experiment_root = os.path.abspath(os.path.expanduser(root_path))
