@@ -154,7 +154,13 @@ def create_ssh_connections(config):
             config['self'] = conns[hostname]
         elif not hostname in conns:
             agenda.subtask(hostname)
-            conns[hostname] = ConnectionWrapper(hostname, nickname=role, dry=args.dry_run, verbose=args.verbose, interact=args.interact)
+            user = None
+            port = None
+            if 'user' in details:
+                user = details['user']
+            if 'port' in details:
+                port = details['port']
+            conns[hostname] = ConnectionWrapper(hostname, nickname=role, user=user, port=port, dry=args.dry_run, verbose=args.verbose, interact=args.interact)
         machines[role] = conns[hostname]
 
     return (conns, machines)
