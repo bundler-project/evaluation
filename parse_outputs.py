@@ -12,7 +12,12 @@ def parse_ccp_log(f, out, out_switch, header, prepend, fields, sample_rate):
     xtcp_regions = []
     to_mode = None
     last_switch = 0
+    xmax = 0
     for l in f:
+        if '[nimbus] starting' in l:
+            mode_expr = re.compile("flow_mode: ([^,]+)")
+            res = mode_expr.search(l)
+            starting_mode = res.groups()[0]
         if 'elasticity_inf' in l:
             if i % sample_rate == 0:
                 try:
@@ -21,18 +26,20 @@ def parse_ccp_log(f, out, out_switch, header, prepend, fields, sample_rate):
                 except:
                     pass
         if 'rin' in l:
-            if i % sample_rate == 0:
-                sp = l.strip().replace(",", "").split(" ")
-                if len(sp) < max(fields):
-                    continue
-                out.write(
-                    prepend + "," +
-                    ','.join([str(round(float(sp[field-1]),3)) for field in fields]) +
-                    ',' + (str(e2) if e2 else '') +
-                    "\n"
-                )
-            e2=None
-            i+=1
+            try:
+                if i % sample_rate == 0:
+                    sp = l.strip().replace(",", "").split(" ")
+                    xmax = float(sp[8])
+                    out.write(
+                        prepend + "," +
+                        ','.join([str(round(float(sp[field-1]),3)) for field in fields]) +
+                        ',' + (str(e2) if e2 else '') +
+                        "\n"
+                    )
+                e2=None
+                i+=1
+            except:
+                continue
         if 'switched mode' in l:
             sp = l.strip().split(" ")
 
@@ -62,6 +69,8 @@ def parse_ccp_log(f, out, out_switch, header, prepend, fields, sample_rate):
     out_switch.write("xmin,xmax,ymin,ymax\n")
     for (xmin,xmax) in xtcp_regions:
         out_switch.write("{},{},-Inf,Inf\n".format(xmin,xmax))
+    if not xtcp_regions and starting_mode == "XTCP":
+        out_switch.write("{},{},-Inf,Inf\n".format(0, xmax))
 
 def parse_ccp_logs(dirname, sample_rate):
     agenda.subtask("ccp logs")
