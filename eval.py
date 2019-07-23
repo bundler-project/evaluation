@@ -780,7 +780,9 @@ if __name__ == "__main__":
         for (m, fname) in config['iteration_outputs']:
             if m != config['self']:
                 try:
-                    m.get(os.path.expanduser(fname), local=os.path.expanduser(os.path.join(config['iteration_dir'], os.path.basename(fname))))
+                    if fname.startswith("~/"):
+                        fname = fname[2:]
+                    m.get(fname, local=os.path.expanduser(os.path.join(config['iteration_dir'], os.path.basename(fname))))
                 except Exception as e:
                     warn("could not get file {}: {}".format(fname, e), exit=False)
 
