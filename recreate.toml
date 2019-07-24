@@ -1,21 +1,22 @@
 [topology]
     [topology.sender]
-        name = "pd1.csail.mit.edu"
-        ifaces = [{dev = "em2", addr = "192.168.1.1"}]
+        name = "18.26.5.163"
+        ifaces = [{dev = "enp4s0", addr = "18.26.5.163"}]
     [topology.inbox]
-        name = "pd2.csail.mit.edu"
+        name = "18.26.5.158"
+        user = "akshay"
         ifaces = [
-            {dev = "em2", addr = "192.168.1.2"},
-            {dev = "10gp1", addr = "10.1.1.2"},
+            {dev = "enp4s0", addr = "18.26.5.158"},
+            {dev = "enp1s0", addr = "18.26.5.160"},
         ]
         listen_port = 28316
-        self = true
     [topology.outbox]
-        name = "pd8.csail.mit.edu"
-        ifaces = [{dev = "10gp1", addr = "10.1.1.8"}]
+        name = "pd2.csail.mit.edu"
+        self = true
+        ifaces = [{dev = "em1", addr = "18.26.5.2"}]
     [topology.receiver]
-        name = "pd8.csail.mit.edu"
-        ifaces = [{dev = "10gp1", addr = "10.1.1.8"}]
+        name = "pd2.csail.mit.edu"
+        ifaces = [{dev = "em2", addr = "18.26.5.2"}]
 
 [sysctl]
 "net.ipv4.tcp_rmem" = "2048000 2048000 12582912"
@@ -30,16 +31,9 @@ qdisc_buf_size = "15mbit"
 
 [structure]
 bundler_root = "~/bundler-script"
-etg_dir = "~/empirical-traffic-gen"
-etg_client = "bin/etgClient"
-etg_server = "run-servers.py"
-iperf_path = "~/iperf/src/iperf"
-bundler_dir = "~/bundler"
-inbox_target = "target/debug/inbox"
-outbox_target = "target/debug/outbox"
 
 [distributions]
-CAIDA_CDF = "~/bundler-script/CAIDA_CDF"
+CAIDA_CDF = "~/bundler-script/distributions/CAIDA_CDF"
 
 [ccp]
     [ccp.nimbus]
@@ -49,13 +43,13 @@ CAIDA_CDF = "~/bundler-script/CAIDA_CDF"
         language = "rust"
         target = "target/debug/nimbus"
         [ccp.nimbus.args]
-            loss_mode = "Bundle"
             bw_est_mode = "false"
             bundler_qlen_alpha = "100"
             bundler_qlen_beta = "10000"
             delay_mode = "Nimbus"
-            use_switching = "false"
+            use_switching = "true"
             flow_mode = "XTCP"
+            loss_mode = "Bundle"
     [ccp.const]
         repo = "https://github.com/ccp-project/const.git"
         branch = "master"
@@ -64,14 +58,13 @@ CAIDA_CDF = "~/bundler-script/CAIDA_CDF"
         target = "target/release/ccp_const"
 
 [experiment]
-#seed      = [0, 17, 26, 28, 41, 62, 67, 68, 88, 99]
-seed      = [0]
-sch       = ['sfq']
+seed      = [0, 17, 26, 28, 41, 62, 67, 68, 88, 99]
+sch       = ['sfq', 'fifo']
 alg       = [
-    #{ name = 'nobundler' },
+    { name = 'nobundler' },
     { 
         name = 'nimbus',
-        bundler_qlen = ["50", "100", "150", "300"]
+        bundler_qlen = ["50", "100"]
     }
 ]
 rate      = [96]
@@ -79,21 +72,18 @@ rtt       = [50]
 bdp       = [2]
 bundle_traffic = [
     [
-        {source = 'iperf', alg = 'cubic', flows = 3, length = 60, port = 5001, start_delay = 0},
+        {source = 'poisson', conns = 200, reqs = 30000, alg = 'reno', dist = 'CAIDA_CDF', backlogged = 0, load = '7/8', start_delay = 0}
     ]
-    #[
-    #    {source = 'poisson', conns = 200, reqs = 30000, alg = 'reno', dist = 'CAIDA_CDF', backlogged = 0, load = '7/8', start_delay = 0}
-    #]
 ]
 cross_traffic = [
-    #[],
-    #[
-    #    {source = 'iperf', alg = 'cubic', flows = 1, length = 60, port = 8002, start_delay = 5},
-    #]
+    [],
+    [
+        {source = 'iperf', alg = 'cubic', flows = 1, length = 60, port = 8002, start_delay = 5},
+    ]
     #[
     #    {source = 'iperf', alg = 'cubic', flows = 2, length = 60, port = 8002, start_delay = 5},
     #],
-    [
-        {source = 'iperf', alg = 'cubic', flows = 3, length = 60, port = 8002, start_delay = 5},
-    ]
+    #[
+    #    {source = 'iperf', alg = 'cubic', flows = 5, length = 120, port = 8002, start_delay = 5},
+    #]
 ]
