@@ -23,6 +23,8 @@ def parse_ccp_log(f, out, out_switch, header, prepend, fields, sample_rate):
         if 'rin' in l:
             if i % sample_rate == 0:
                 sp = l.strip().replace(",", "").split(" ")
+                if len(sp) < max(fields):
+                    continue
                 out.write(
                     prepend + "," +
                     ','.join([str(round(float(sp[field-1]),3)) for field in fields]) +
