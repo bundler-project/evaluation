@@ -22,7 +22,7 @@ def get_ccp_binary_path(config, alg):
 
 def check_ccp_alg(config, node):
     for (alg, details) in config['ccp'].items():
-        agenda.subtask(alg)
+        agenda.task(alg)
         alg_dir = get_ccp_alg_dir(config, alg)
         if not node.file_exists(alg_dir):
             expect(

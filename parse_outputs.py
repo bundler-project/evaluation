@@ -67,7 +67,7 @@ def parse_ccp_logs(dirname, sample_rate):
     agenda.subtask("ccp logs")
     fields = [9,17,19,27,29,35,13]
     log_header = "elapsed,rtt,zt,rout,rin,curr_rate,curr_q,elasticity2"
-    pattern = re.compile('(?P<sch>[a-z]+)_(?P<bw>[\d]+)_(?P<delay>[\d]+)/nimbus.(?P<args>[a-z_]+=[a-z_0-9]+)+/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/ccp.log')
+    pattern = re.compile('(?P<sch>[a-z]+)_(?P<bw>[\d]+)_(?P<delay>[\d]+)/nimbus.(?P<args>([a-z_]+=[a-z_0-9]+.)+)/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/ccp.log')
 
     g = glob.glob(dirname + "/**/ccp.log", recursive=True)
     for exp in g:

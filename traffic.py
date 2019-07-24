@@ -29,7 +29,7 @@ class IperfTraffic(Traffic):
         iperf_out = os.path.join(config['iteration_dir'], "iperf_client_{}.log".format(traffic.port))
         check_bundler_port(in_bundler, traffic, config)
         cmd = "sleep {delay} && {path} -c {ip} -p {port} --reverse -i {report_interval} -t {length} -P {num_flows} -Z {alg}".format(
-            path=config['structure']['iperf_path'],
+            path=os.path.join(config['structure']['bundler_root'], 'iperf/src/iperf'),
             ip=config['topology']['sender']['ifaces'][0]['addr'] if in_bundler else '$MAHIMAHI_BASE',
             port=traffic.port,
             report_interval=traffic.report_interval,
@@ -59,7 +59,7 @@ class IperfTraffic(Traffic):
         expect(
             node.run(
                 "{path} -s -p {port} --reverse -i {report_interval} -t {length} -P {num_flows}".format(
-                    path=config['structure']['iperf_path'],
+                    path=os.path.join(config['structure']['bundler_root'], 'iperf/src/iperf'),
                     port=traffic.port,
                     report_interval=traffic.report_interval,
                     length=traffic.length,
@@ -94,7 +94,7 @@ class CBRTraffic(Traffic):
         check_bundler_port(in_bundler, traffic, config)
 
         cmd = "sleep {delay} && {path} -c {ip} -p {port} --reverse -i {report_interval} -t {length}".format(
-            path=config['structure']['iperf_path'],
+            path=os.path.join(config['structure']['bundler_root'], 'iperf/src/iperf'),
             ip=config['topology']['sender']['ifaces'][0]['addr'] if in_bundler else '$MAHIMAHI_BASE',
             port=traffic.port,
             report_interval=traffic.report_interval,
@@ -140,7 +140,7 @@ class CBRTraffic(Traffic):
         expect(
             node.run(
                 "{path} -s -p {port} --reverse -i {report_interval} -t {length} -Z ccp".format(
-                    path=config['structure']['iperf_path'],
+                    path=os.path.join(config['structure']['bundler_root'], 'iperf/src/iperf'),
                     port=traffic.port,
                     report_interval=traffic.report_interval,
                     length=traffic.length,
@@ -245,7 +245,7 @@ class PoissonTraffic(Traffic):
                     conns=traffic.num_conns,
                     alg=traffic.congalg
                 ),
-                wd=config['structure']['etg_dir'],
+                wd=os.path.join(config['structure']['bundler_root'], 'empirical-traffic-gen'),
                 stdout=etg_out,
                 stderr=etg_out,
                 background=True,

@@ -1,3 +1,15 @@
 [submodule "seashells"]
 	path = seashells
 	url = https://github.com/fcangialosi/seashells
+[submodule "iperf"]
+	path = iperf
+	url = https://github.com/ccp-project/iperf
+[submodule "empiricial-traffic-gen"]
+	path = empirical-traffic-gen
+	url = https://github.com/ccp-project/empiricial-traffic-gen
+[submodule "bundler"]
+	path = bundler
+	url = https://github.com/bundler-project/bundler
+[submodule "mahimahi"]
+	path = mahimahi
+	url = https://github.com/fcangialosi/mahimahi

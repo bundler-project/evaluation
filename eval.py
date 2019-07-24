@@ -92,13 +92,6 @@ def check_config(config):
 
     structure_fields = [
         ('bundler_root', 'root directory for all experiments and code'),
-        ('etg_dir', 'path to empirical traffic generator source'),
-        ('etg_client', 'relative path to client binary within etg_dir'),
-        ('etg_server', 'relative path to server binary within etg_dir'),
-        ('iperf_path', 'path to reverse iperf binary'),
-        ('bundler_dir', 'path to bundler (inbox/outbox) source code'),
-        ('inbox_target', 'relative path to inbox binary within bundler_dir'),
-        ('outbox_target', 'relative path to outbox binary within bundler_dir'),
     ]
 
     for (field,detail) in structure_fields:
@@ -274,19 +267,12 @@ def kill_leftover_procs(config, conns):
     return (not res.exited)
 
 def get_inbox_binary(config):
-   return os.path.join(config['structure']['bundler_dir'], config['structure']['inbox_target'])
+   return os.path.join(config['structure']['bundler_root'], "bundler/target/debug/inbox")
 
 def get_outbox_binary(config):
-   return os.path.join(config['structure']['bundler_dir'], config['structure']['outbox_target'])
+   return os.path.join(config['structure']['bundler_root'], "bundler/target/debug/outbox")
 
 def check_etg(config, node):
-    if not node.file_exists(config['structure']['etg_dir']):
-        fatal_warn("Unable to find empirical traffic generator on {}. Make sure it has been cloned".format(node.addr))
-
-    if not node.file_exists(config['etg_client_path']):
-        node.run("make -C {}".format(config['structure']['etg_dir']))
-
-
     expect(
         node.run("mkdir -p {}".format(config['distribution_dir'])),
         "Failed to create distributions directory {}".format(config['distribution_dir'])
@@ -297,78 +283,14 @@ def check_etg(config, node):
         if not node.file_exists(remote_path):
             node.put(os.path.expanduser(path), remote=config['distribution_dir'])
 
-    node.run("chmod +x {}".format(os.path.join(config['structure']['etg_dir'], config['structure']['etg_server'])))
-
-def check_sender(config, sender):
-    agenda.subtask("iperf (sender)")
-
-    if not sender.file_exists(config['structure']['iperf_path']):
-        fatal_warn("Unable to find reverse iperf at {} on the sender machine. Make sure it exists and is compiled.".format(config['structure']['iperf_path']))
-
-    agenda.subtask("empirical traffic generator (sender)")
-    check_etg(config, sender)
-
 def check_inbox(config, inbox):
-    agenda.subtask("inbox")
-
-    inbox_binary = get_inbox_binary(config)
-    if not inbox.file_exists(inbox_binary):
-        expect(
-            inbox.run("make -C {} {}".format(
-                config['structure']['bundler_dir'],
-                'release' if 'release' in inbox_binary else ''
-            )),
-            "Inbox failed to build bundler repository"
-        )
-
+    agenda.task("inbox")
     check_ccp_alg(config, inbox)
 
-def check_commits(config, machines):
-    config['commits']['inbox'] = {}
-    branch = machines['inbox'].run("git -C {} rev-parse --abbrev-ref HEAD".format(config['structure']['bundler_dir'])).stdout.strip()
-    commit = machines['inbox'].run("git -C {} rev-parse HEAD".format(config['structure']['bundler_dir'])).stdout.strip()
-    config['commits']['inbox']['bundler'] = "{}:{}".format(branch, commit)
-
-    for (alg, details) in config['ccp'].items():
-        alg_dir = get_ccp_alg_dir(config, alg)
-        final_branch = machines['inbox'].run("git -C {} rev-parse --abbrev-ref HEAD".format(alg_dir)).stdout.strip()
-        final_commit = machines['inbox'].run("git -C {} rev-parse HEAD".format(alg_dir)).stdout.strip()
-        config['commits']['inbox'][alg] = "{}:{}".format(final_branch, final_commit)
-
-    config['commits']['receiver'] = {}
-    alg_dir = get_ccp_alg_dir(config, 'const')
-    final_branch = machines['receiver'].run("git -C {} rev-parse --abbrev-ref HEAD".format(alg_dir)).stdout.strip()
-    final_commit = machines['receiver'].run("git -C {} rev-parse HEAD".format(alg_dir)).stdout.strip()
-    config['commits']['receiver'][alg] = "{}:{}".format(final_branch, final_commit)
-
-
-def check_outbox(config, outbox):
-    agenda.subtask("outbox")
-
-    outbox_binary = get_outbox_binary(config)
-    if not outbox.file_exists(outbox_binary):
-        expect(
-            outbox.run("make -C {} {}".format(
-                config['box_root'],
-                'release' if 'release' in outbox_binary else ''
-            )),
-            "Outbox failed to build bundler repository"
-        )
-
 def check_receiver(config, receiver):
-    agenda.subtask("mahimahi (receiver)")
+    agenda.task("mahimahi (receiver)")
     if not receiver.prog_exists("mm-delay"):
         fatal_warn("Receiver does not have mahimahi installed.")
-
-    agenda.subtask("iperf (receiver)")
-    if not receiver.file_exists(config['structure']['iperf_path']):
-        fatal_warn("Unable to find reverse iperf at {} on the receiver machine. Make sure it exists and is compiled.".format(config['structure']['iperf_path']))
-
-    agenda.subtask("empirical traffic generator (receiver)")
-    check_etg(config, receiver)
-
-    agenda.subtask("CCP (receiver)")
-    #check_ccp_alg(config, receiver)
 
 def start_outbox(config, outbox, emulation_env=None, bundle_client=None, cross_client=None, nobundler=False):
     outbox_output = os.path.join(config['iteration_dir'], 'outbox.log')
@@ -496,8 +418,8 @@ def prepare_directories(config, conns):
     config['experiment_dir'] = os.path.join(config['experiment_root'], config['experiment_name'])
     config['ccp_dir'] = os.path.join(bundler_root, 'ccp')
     config['distribution_dir'] = os.path.join(bundler_root, 'distributions')
-    config['etg_client_path'] = os.path.join(config['structure']['etg_dir'], config['structure']['etg_client'])
-    config['etg_server_path'] = os.path.join(config['structure']['etg_dir'], config['structure']['etg_server'])
+    config['etg_client_path'] = os.path.join(config['structure']['bundler_root'], "empirical-traffic-gen/bin/etgClient")
+    config['etg_server_path'] = os.path.join(config['structure']['bundler_root'], "empirical-traffic-gen/run-servers.py")
     config['parameters']['bg_port_end'] = config['parameters']['bg_port_start'] + 1000
 
     if os.path.exists(os.path.expanduser(config['experiment_dir'])):
@@ -620,17 +542,19 @@ if __name__ == "__main__":
     if args.interact:
         warn("Running in interactive mode. Each command is printed before it's run.\nPress any key to continue executing the command or control-c to stop.", exit=False)
 
-    agenda.section("Setup")
-
+    agenda.section("Read config")
     config = read_config(args)
     config['args'] = args
     if config['args'].verbose and config['args'].verbose >= 2:
         logging.basicConfig(level=logging.DEBUG)
+
+    agenda.section("Connect to experiment cluster")
     conns, machines = create_ssh_connections(config)
     if not args.skip_setup:
         setup_networking(machines, config)
         update_sysctl(machines, config)
 
+    agenda.section("Setup")
     prepare_directories(config, conns)
     details_md = os.path.join(os.path.expanduser(config['experiment_dir']), 'details.md')
     results_md = os.path.join(os.path.expanduser(config['experiment_dir']), 'results.md')
@@ -641,25 +565,12 @@ if __name__ == "__main__":
         with open(results_md, 'w') as f:
             f.write("TODO\n")
 
+    agenda.section("Synchronizing code versions")
     if not args.skip_git:
-        agenda.task("Synchronizing code versions")
-        check_sender(config, machines['sender'])
         check_inbox(config, machines['inbox'])
-        check_outbox(config, machines['outbox'])
         check_receiver(config, machines['receiver'])
 
-    config['commits'] = {}
-    check_commits(config, machines)
-    commits_md = os.path.join(os.path.expanduser(config['experiment_dir']), 'commits.md')
-    with open(commits_md, 'w') as f:
-        for m, commits in config['commits'].items():
-            f.write("[{}]\n".format(m))
-            for k, commit in commits.items():
-                f.write("{} = {}\n".format(k, commit))
-            f.write("\n")
-
     agenda.section("Starting experiments")
-
     exp_args = config['experiment']
     axes = list(exp_args.values())
     ps = list(itertools.product(*axes))

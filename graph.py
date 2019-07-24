@@ -14,10 +14,6 @@ def write_rmd(experiment_root, csv_name, downsample=None, fields="zt, rout, rin,
     with open(tomls[0], 'r') as f:
         config = f.read()
 
-    commits_md = os.path.join(experiment_root, 'commits.md')
-    with open(commits_md, 'r') as f:
-        commits = f.read()
-
     wrap_str = rows
 
     grid = []
@@ -122,19 +118,12 @@ on the "autoscale" button. You can hover to see exact values.
 ```{{r config, eval=FALSE}}
 {config}
 ```
-
-### Commits
-```{{r commits, eval=FALSE}}
-{commits}
-```
-
 """.format(
         title = experiment_name,
         summary = summary,
         config = config,
         grid_str = grid_str,
         results = results,
-        commits = commits,
         overview = overview,
         mm_plots = mm_plots,
     )
