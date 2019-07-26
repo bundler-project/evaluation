@@ -2,6 +2,7 @@ import sys
 import agenda
 from fabric import Connection, Result
 from termcolor import colored
+import os
 
 ###################################################################################################
 # Helpers
@@ -153,6 +154,85 @@ class ConnectionWrapper(Connection):
             return super().get(remote_file, local, preserve_mode)
         else:
             return FakeResult()
+
+def update_sysctl(conns, config):
+    if 'sysctl' in config:
+        agenda.task("Updating sysctl")
+
+        for (addr, conn) in conns.items():
+            if config['args'].verbose or config['args'].dry_run:
+                agenda.subtask(addr)
+
+            for k in config['sysctl']:
+                v = config['sysctl'][k]
+                expect(
+                    conn.run("sysctl -w {k}=\"{v}\"".format(k=k,v=v), sudo=True),
+                    "Failed to set {k} on {addr}".format(k=k, addr=addr)
+                )
+
+def disable_tcp_offloads(config, machines):
+    agenda.task("Turn off TSO, GSO, and GRO")
+    for node in ['sender', 'inbox', 'outbox', 'receiver']:
+        agenda.subtask(node)
+        for i,iface in enumerate(config['topology'][node]['ifaces']):
+            expect(
+                machines[node].run(
+                    "ethtool -K {} tso off gso off gro off".format(
+                        config['topology'][node]['ifaces'][i]['dev']
+                    ),
+                    sudo=True
+                ),
+                "Failed to turn off optimizations"
+            )
+
+def start_tcpprobe(config, sender):
+    if config['args'].verbose:
+        agenda.subtask("Start tcpprobe")
+    if not sender.file_exists("/proc/net/tcpprobe"):
+        fatal_warn("Could not find tcpprobe on sender. Make sure the kernel module is loaded.")
+
+    expect(
+        sender.run("dd if=/dev/null of=/proc/net/tcpprobe bs=256", sudo=True, background=True),
+        "Sender failed to clear tcpprobe buffer"
+    )
+
+    tcpprobe_out = os.path.join(config['iteration_dir'], 'tcpprobe.log')
+    expect(
+        sender.run(
+            "dd if=/proc/net/tcpprobe of={} bs=256".format(tcpprobe_out),
+            sudo=True,
+            background=True
+        ),
+        "Sender failed to start tcpprobe"
+    )
+
+    config['iteration_outputs'].append((sender, tcpprobe_out))
+
+    return tcpprobe_out
+
+def kill_leftover_procs(config, conns):
+    agenda.subtask("Kill leftover experiment processes")
+    for (addr, conn) in conns.items():
+        if args.verbose:
+            agenda.subtask(addr)
+        proc_regex = "|".join(["inbox", "outbox", *config['ccp'].keys(), "iperf", "etgClient", "etgServer", "ccp_const"])
+        conn.run(
+            "pkill -9 \"({search})\"".format(
+                search=proc_regex
+            ),
+            sudo=True
+        )
+        res = conn.run(
+            "pgrep -c \"({search})\"".format(
+                search=proc_regex
+            ),
+            sudo=True
+        )
+        if not res.exited and not config['args'].dry_run:
+            fatal_warn("Failed to kill all procs on {}.".format(conn.addr))
+
+    # True = some processes remain, therefore there *are* zombies, so we return false
+    return (not res.exited)
 
 def expect(res, msg):
     if res and res.exited:

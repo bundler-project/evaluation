@@ -6,6 +6,7 @@ import selenium
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
+mport subprocess
 from pyspin.spin import make_spin, Default
 
 @make_spin(Default, "Waiting to load cluster selection...")
@@ -29,7 +30,17 @@ def launch_wait(driver):
             pass
         time.sleep(2)
 
+def get_chromedriver():
+    if os.path.exists("./cloudlab/chromedriver"):
+        return
+
+    subprocess.call("wget https://chromedriver.storage.googleapis.com/75.0.3770.140/chromedriver_mac64.zip -O ./cloudlab/chromedriver.zip", shell=True)
+    subprocess.call("unzip ./cloudlab/chromedriver.zip -d ./cloudlab", shell=True)
+    subprocess.call("rm ./cloudlab/chromedriver.zip", shell=True)
+
 def launch(headless=False):
+    get_chromedriver()
+
     chrome_options = Options()
     chrome_options.add_argument("--incognito")
     if headless:
@@ -95,7 +106,7 @@ def make_cloudlab_topology(config, headless=False):
     config['topology']['sender'] = senders[0]
     config['topology']['inbox'] = senders[1]
     config['topology']['outbox'] = receivers[0]
-    config['topology']['receiver'] = receivers[0]
+    config['topology']['receiver'] = receivers[1]
     return config
 
 ip_addr_rgx = re.compile(r"(?P<dev>[a-z0-9]+)\W*inet\W*(?P<addr>[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/[0-9]+")
@@ -116,6 +127,9 @@ def init_repo(config, machines):
 
     for m in machines:
         machines[m].run(clone)
+        machines[m].run(f"make -C {root}")
 
 def bootstrap_cloudlab_topology(config, machines):
     config = get_interfaces(config, machines)
+    init_repo(config, machines)
+    return config

@@ -1,4 +1,7 @@
+from collections import namedtuple
 import agenda
+import itertools
+import random
 import toml
 
 def read_config(args):
@@ -91,3 +94,34 @@ def check_config(config):
                     assert t['length'], "{} missing 'length (int)'".format(traffic_type)
                     assert t['port'], "{} missing 'port (int)'".format(traffic_type)
                     assert t['rate'], "{} missing 'rate (int)'".format(traffic_type)
+
+def flatten(exps, dim):
+    def f(dct):
+        xs = [(k, dct[k]) for k in dct]
+        expl = [(a,b) for a,b in xs if type(b) == type([])]
+        done = [(a,b) for a,b in xs if type(b) != type([])]
+        if len(expl) > 0:
+            ks, bs = zip(*expl)
+        else:
+            ks, bs = ([], [])
+        bs = list(itertools.product(*bs))
+        expl = [dict(done + list(zip(ks, b))) for b in bs]
+        return expl
+
+    for e in exps:
+        es = f(e[dim])
+        for a in es:
+            n = e
+            n[dim] = a
+            yield n
+
+def enumerate_experiments(config):
+    agenda.section("Starting experiments")
+    exp_args = config['experiment']
+    axes = list(exp_args.values())
+    ps = list(itertools.product(*axes))
+    exps = [dict(zip(exp_args.keys(), p)) for p in ps]
+    Experiment = namedtuple("Experiment", exp_args.keys())
+    exps = [Experiment(**x) for x in flatten(exps, 'alg')]
+    random.shuffle(exps)
+    return exps
