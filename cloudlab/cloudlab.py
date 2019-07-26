@@ -122,11 +122,15 @@ def get_interfaces(config, machines):
 
 # clone the bundler repository
 def init_repo(config, machines):
+    agenda.section("Init cloudlab nodes")
     root = config['structure']['bundler_root']
-    clone = f'git clone --recurse-submodules https://github.com/bundler-project/evaluation {root}'
+    clone = f'git clone --recurse-submodules -b cloudlab https://github.com/bundler-project/evaluation {root}'
 
     for m in machines:
+        agenda.task(m)
+        agenda.subtask("cloning eval repo")
         machines[m].run(clone)
+        agenda.subtask("compiling experiment tools")
         machines[m].run(f"make -C {root}")
 
 def bootstrap_cloudlab_topology(config, machines):
