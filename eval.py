@@ -1,5 +1,4 @@
 import sys
-import toml
 import argparse
 import agenda
 import os.path
@@ -13,11 +12,13 @@ import io
 import subprocess
 import getpass
 
-from util import *
-from traffic import *
 from ccp import *
+from config import read_config
 from parse_outputs import parse_outputs
+from traffic import *
+from util import *
 from zulip_notify import zulip_notify
+from cloudlab.cloudlab import make_cloudlab_topology
 
 ###################################################################################################
 # Parse arguments
@@ -46,92 +47,6 @@ parser.add_argument('--downsample', type=int, default=1, help="how much to downs
 parser.add_argument('--name', type=str, help="name of experiment directory", required=True)
 parser.add_argument('--details', type=str, help="extra information to include in experiment report", default="")
 ###################################################################################################
-
-def read_config(args):
-    agenda.task("Reading config file: {}".format(args.config))
-    with open(args.config) as f:
-        try:
-            config = toml.loads(f.read())
-            config['experiment_name'] = args.name #args.config.split(".toml")[0]
-        except Exception as e:
-            print(e)
-            fatal_error("Failed to parse config")
-            raise e
-        check_config(config)
-    return config
-
-def check_config(config):
-    agenda.task("Checking config file")
-    topology = config['topology']
-    nodes = ['sender', 'inbox', 'outbox', 'receiver']
-    for node in nodes:
-        assert node in topology, "Missing key topology.{}".format(node)
-        assert 'name' in topology[node], "topology.{} is missing 'name' key".format(node)
-        assert 'ifaces' in topology[node], "topology.{} is missing 'ifaces' key".format(node)
-        assert len(topology[node]['ifaces']) > 0, "topology.{} must have at least 1 interface".format(node)
-        for i,iface in enumerate(topology[node]['ifaces']):
-            assert 'dev' in iface, "topology.{} iface {} is missing 'dev' key".format(node, i)
-            assert 'addr' in iface, "topology.{} iface {} is missing 'addr' key".format(node, i)
-    assert len(topology['inbox']['ifaces']) > 1, "topology.inbox must have at least 2 interaces"
-
-    assert 'listen_port' in topology['inbox'], "topology.inbox must define listen_port"
-
-    num_self = 0
-    for node in topology:
-        if 'self' in topology[node] and topology[node]['self']:
-            num_self += 1
-    assert num_self > 0, "One node in topology section must be labeled with \"self = true\""
-    assert num_self == 1, "Only one node in topology section can be labeled self"
-
-    for k in config['sysctl']:
-        v = config['sysctl'][k]
-        assert type(v) == str, "key names with dots must be enclosed in quotes (sysctl)"
-
-    assert 'initial_sample_rate' in config['parameters'], "parameters must include initial_sample_rate"
-    assert 'bg_port_start' in config['parameters'], "parameters must include bg_port_start"
-
-    structure_fields = [
-        ('bundler_root', 'root directory for all experiments and code'),
-    ]
-
-    for (field,detail) in structure_fields:
-        assert field in config['structure'], "[structure] missing key '{}': {}".format(field, detail)
-
-    assert len(config['experiment']['seed']) > 0, "must specify at least one seed"
-    assert len(config['experiment']['sch']) > 0, "must specify at least one scheduler (sch)"
-    assert len(config['experiment']['alg']) > 0, "must specify at least one algorithm (alg)"
-    assert all('name' in a for a in config['experiment']['alg']), "algs must have key name"
-    assert len(config['experiment']['rate']) > 0, "must specify at least one rate"
-    assert len(config['experiment']['rtt']) > 0, "must specify at least one rtt"
-    assert len(config['experiment']['bdp']) > 0, "must specify at least one bdp"
-
-    assert 'bundle_traffic' in config['experiment'], "must specify at least one type of bundle traffic"
-    assert len(config['experiment']['bundle_traffic']) > 0, "must specify at least one type of bundle traffic"
-    assert 'cross_traffic' in config['experiment'], "must specify at least one type of cross traffic"
-    assert len(config['experiment']['cross_traffic']) > 0, "must specify at least one type of cross traffic"
-
-    sources = ['iperf', 'poisson', 'cbr']
-    for traffic_type in ['bundle_traffic', 'cross_traffic']:
-        for traffic in config['experiment'][traffic_type]:
-            for t in traffic:
-                print(t)
-                assert t['source'] in sources, "{} traffic source must be one of ({})".format(traffic_type, "|".join(sources))
-                assert 'start_delay' in t, "{} missing start_delay (int)".format(traffic_type)
-                if t['source'] == 'iperf':
-                    assert t['alg'], "{} missing 'alg' (str)".format(traffic_type)
-                    assert t['flows'], "{} missing 'flows' (int)".format(traffic_type)
-                    assert t['length'], "{} missing 'length' (int)".format(traffic_type)
-                if t['source'] == 'poisson':
-                    assert t['conns'], "{} missing 'conns' (int)".format(traffic_type)
-                    assert t['reqs'], "{} missing 'reqs' (int)".format(traffic_type)
-                    assert t['dist'], "{} missing 'dist' (str)".format(traffic_type)
-                    assert t['load'], "{} missing 'load' (str)".format(traffic_type)
-                    assert t['alg'], "{} missing 'alg' (str)".format(traffic_type)
-                    assert 'backlogged' in t, "{} missing 'backlogged' (int)".format(traffic_type)
-                if t['source'] == 'cbr':
-                    assert t['length'], "{} missing 'length (int)'".format(traffic_type)
-                    assert t['port'], "{} missing 'port (int)'".format(traffic_type)
-                    assert t['rate'], "{} missing 'rate (int)'".format(traffic_type)
 
 def create_ssh_connections(config):
     agenda.task("Creating SSH connections")
@@ -179,7 +94,8 @@ def setup_networking(machines, config):
     agenda.subtask("sender")
     expect(
         machines['sender'].run(
-            "ip route del {receiver}; ip route add {receiver} via {inbox}".format(
+            "ip route del {receiver}; ip route add {receiver} via {inbox} src {sender}".format(
+                sender   = config['topology']['sender']['ifaces'][0]['addr'],
                 receiver = config['topology']['receiver']['ifaces'][0]['addr'],
                 inbox    = config['topology']['inbox']['ifaces'][0]['addr']
             ),
@@ -499,7 +415,6 @@ def start_tcpprobe(config, sender):
 
     return tcpprobe_out
 
-
 ###################################################################################################
 
 def start_interacting(machines):
@@ -536,6 +451,7 @@ def flatten(exps, dim):
 ###################################################################################################
 # Setup
 ###################################################################################################
+
 if __name__ == "__main__":
     args = parser.parse_args()
 
@@ -548,8 +464,18 @@ if __name__ == "__main__":
     if config['args'].verbose and config['args'].verbose >= 2:
         logging.basicConfig(level=logging.DEBUG)
 
+    if cloudlab in config['topology']:
+        config = make_cloudlab_topology(config)
+
     agenda.section("Connect to experiment cluster")
     conns, machines = create_ssh_connections(config)
+
+    if cloudlab in config['topology']:
+        config = bootstrap_cloudlab_topology(config, machines)
+
+    import pdb
+    pdb.set_trace()
+
     if not args.skip_setup:
         setup_networking(machines, config)
         update_sysctl(machines, config)
