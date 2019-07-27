@@ -14,7 +14,12 @@ class FakeResult(object):
 
 class ConnectionWrapper(Connection):
     def __init__(self, addr, nickname, user=None, port=None, verbose=False, dry=False, interact=False):
-        super().__init__(addr, user=user, port=port)
+        super().__init__(
+            addr,
+            forward_agent=True,
+            user=user,
+            port=port,
+        )
         self.addr = addr
         self.nickname = nickname
         self.verbose = verbose

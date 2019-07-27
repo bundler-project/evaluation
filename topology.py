@@ -1,13 +1,13 @@
 import agenda
 from util import *
-from cloudlab.cloudlab import make_cloudlab_topology
+from cloudlab.cloudlab import make_cloudlab_topology, bootstrap_cloudlab_topology
 
 def create_ssh_connections(config):
     agenda.task("Creating SSH connections")
     conns = {}
     machines = {}
     args = config['args']
-    for (role, details) in config['topology'].items():
+    for (role, details) in [(r, d) for r, d in config['topology'].items() if r in ("sender", "inbox", "outbox", "receiver")]:
         hostname = details['name']
         is_self = 'self' in details and details['self']
         if is_self:
@@ -102,14 +102,17 @@ class CloudlabTopo:
         self.conns = conns
         self.machines = machines
         config = bootstrap_cloudlab_topology(config, machines)
+        self.config = config
 
-    def setup_routing(self, config, machines):
+    def setup_routing(self):
         """
         sender --> inbox --> outbox --> receiver
 
         Don't bother with the reverse path
         """
         agenda.task("Setting up routing tables")
+        config = self.config
+        machines = self.machines
 
         agenda.subtask("sender")
         expect(
