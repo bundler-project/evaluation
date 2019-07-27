@@ -178,7 +178,12 @@ def init_repo(config, machines):
         agenda.task(machines[m].addr)
         agenda.subtask("cloning eval repo")
         machines[m].verbose = True
-        machines[m].run(clone)
+        if not machines[m].file_exists(root):
+            res = machines[m].run(clone)
+        else:
+            # previously cloned, update to latest commit
+            machines[m].run(f"cd {root} && git pull origin cloudlab")
+            machines[m].run(f"cd {root} && git submodule update --init --recursive")
         agenda.subtask("compiling experiment tools")
         machines[m].run(f"make -C {root}")
         machines[m].verbose = False
