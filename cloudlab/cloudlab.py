@@ -154,7 +154,7 @@ def make_cloudlab_topology(config, headless=False):
     config['topology']['receiver'] = receivers[1]
     return config
 
-ip_addr_rgx = re.compile(r"(?P<dev>[a-z0-9]+)\W*inet\W*(?P<addr>[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/[0-9]+")
+ip_addr_rgx = re.compile(r"\w+:\W*(?P<dev>\w+).*inet (?P<addr>[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)")
 # populate interface names and ips
 def get_interfaces(config, machines):
     agenda.section("Get Cloudlab node interfaces")
@@ -163,8 +163,8 @@ def get_interfaces(config, machines):
         conn = machines[m]
         ifaces = conn.run("ip -4 -o addr").stdout.strip().split("\n")
         ifaces = [ip_addr_rgx.match(i) for i in ifaces]
-        ifaces = [i.groupdict() for i in ifaces if i is not None]
-        config['topology'][m].update(ifaces)
+        ifaces = [i.groupdict() for i in ifaces if i is not None and i["dev"] != "lo"]
+        config['topology'][m]['ifaces'] = ifaces
 
     return config
 
