@@ -229,7 +229,7 @@ class PoissonTraffic(Traffic):
             return cmd
 
     def start_server(traffic, config, node, execute):
-        agenda.subtask("Start poisson server ({})".format(traffic))
+        agenda.subtask(f"Start ETG server ({traffic}) on {node}")
 
         i=1
         etg_out = os.path.join(config['iteration_dir'], "etg_server{}.log".format(i))
@@ -237,6 +237,7 @@ class PoissonTraffic(Traffic):
             i+=1
             etg_out = os.path.join(config['iteration_dir'], "etg_server{}.log".format(i))
 
+        node.verbose = True
         expect(
             node.run(
                 "{sh} {start} {conns} {alg}".format(
@@ -266,7 +267,6 @@ class PoissonTraffic(Traffic):
             sys.exit(1)
 
         config['iteration_outputs'].append((node, etg_out))
-
         return etg_out
 
 def create_traffic_config(traffic, exp):

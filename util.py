@@ -64,6 +64,8 @@ class ConnectionWrapper(Connection):
             stdin="/dev/null"
             stdout="/dev/null"
             stderr="/dev/null"
+        if background:
+            stdin="/dev/null"
         full_cmd = "{pre}{cmd} > {stdout} 2> {stderr} < {stdin} {bg}".format(
             pre=pre,
             cmd=cmd,
@@ -72,6 +74,7 @@ class ConnectionWrapper(Connection):
             stderr=stderr,
             bg=("&" if background else "")
         )
+
         if sudo and ';' in cmd:
             full_cmd += "\""
 
@@ -215,11 +218,9 @@ def start_tcpprobe(config, sender):
 
     return tcpprobe_out
 
-def kill_leftover_procs(config, conns):
+def kill_leftover_procs(config, conns, verbose=False):
     agenda.subtask("Kill leftover experiment processes")
     for (addr, conn) in conns.items():
-        if args.verbose:
-            agenda.subtask(addr)
         proc_regex = "|".join(["inbox", "outbox", *config['ccp'].keys(), "iperf", "etgClient", "etgServer", "ccp_const"])
         conn.run(
             "pkill -9 \"({search})\"".format(

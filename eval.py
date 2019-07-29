@@ -44,16 +44,10 @@ parser.add_argument('--details', type=str, help="extra information to include in
 ###################################################################################################
 
 def get_inbox_binary(config):
-   p = os.path.join(config['structure']['bundler_root'], "bundler/target/debug/inbox")
-   if not os.path.exists(p):
-       raise Exception("inbox binary not found")
-
-   return p
+   return os.path.join(config['structure']['bundler_root'], "bundler/target/debug/inbox")
 
 def get_outbox_binary(config):
-   p = os.path.join(config['structure']['bundler_root'], "bundler/target/debug/outbox")
-   if not os.path.exists(p):
-       raise Exception("outbox binary not found")
+   return os.path.join(config['structure']['bundler_root'], "bundler/target/debug/outbox")
 
 def check_etg(config, node):
     expect(
@@ -382,14 +376,12 @@ if __name__ == "__main__":
         config['iteration_dir'] = os.path.join(config['experiment_dir'], iteration_name)
         if os.path.exists(os.path.expanduser(config['iteration_dir'])):
             if config['args'].skip_existing:
-                agenda.subtask("skipping")
+                agenda.subtask("skipping experiment")
                 continue
             elif config['args'].overwrite_existing:
-                agenda.subtask("overwriting")
+                agenda.subtask("overwriting experiment")
             else:
                 fatal_warn("Found existing results for this experiment, but unsure how to handle it. Please provide --skip-existing or --overwite-existing")
-        else:
-            agenda.subtask("fresh")
 
         config['iteration_outputs'] = []
 
@@ -402,6 +394,7 @@ if __name__ == "__main__":
             inbox_out = start_inbox(config, machines['inbox'], exp.sch, config['parameters']['qdisc_buf_size'])
             ccp_out = start_ccp(config, machines['inbox'], exp.alg)
             machines['inbox'].check_file('Inbox ready', inbox_out)
+            agenda.subtask("Inbox ready")
 
         if config['args'].tcpprobe:
             #TODO figure out how to check for and kill dd, it's a substring in other process names

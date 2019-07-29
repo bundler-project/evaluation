@@ -97,7 +97,8 @@ class MahimahiTopo:
 
 class CloudlabTopo:
     def __init__(self, config):
-        config = make_cloudlab_topology(config)
+        config = make_cloudlab_topology(config, headless=True)
+        config['topology']['inbox']['listen_port'] = 28316
         conns, machines = create_ssh_connections(config)
         self.conns = conns
         self.machines = machines
@@ -120,7 +121,7 @@ class CloudlabTopo:
                 "ip route del {receiver}; ip route add {receiver} via {inbox} src {sender}".format(
                     sender   = config['topology']['sender']['ifaces'][0]['addr'],
                     receiver = config['topology']['receiver']['ifaces'][0]['addr'],
-                    inbox    = config['topology']['inbox']['ifaces'][0]['addr']
+                    inbox    = config['topology']['inbox']['ifaces'][1]['addr']
                 ),
                 sudo=True
             ),
