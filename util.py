@@ -13,7 +13,7 @@ class FakeResult(object):
         self.stdout = '(dryrun)'
 
 class ConnectionWrapper(Connection):
-    def __init__(self, addr, nickname, user=None, port=None, verbose=False, dry=False, interact=False):
+    def __init__(self, addr, nickname, user=None, port=None, verbose=True, dry=False, interact=False):
         super().__init__(
             addr,
             forward_agent=True,
@@ -50,33 +50,33 @@ class ConnectionWrapper(Connection):
         .stderr = stderr string (if not redirected to a file)
     """
     def run(self, cmd, *args, stdin="/dev/stdin", stdout="/dev/stdout", stderr="/dev/stderr", ignore_out=False, wd=None, sudo=False, background=False, pty=True, **kwargs):
+        self.verbose = True
         # Prepare command string
         pre = ""
         if wd:
             pre += "cd {} && ".format(wd)
+        if background:
+            pre += "screen -d -m "
+        #escape the strings
+        cmd = cmd.replace("\"", "\\\"")
+        pre += "bash -c \""
         if sudo:
             pre += "sudo "
-            if ';' in cmd:
-                pre += "bash -c \""
-        if background:
-            pre += "nohup "
         if ignore_out:
             stdin="/dev/null"
             stdout="/dev/null"
             stderr="/dev/null"
         if background:
             stdin="/dev/null"
-        full_cmd = "{pre}{cmd} > {stdout} 2> {stderr} < {stdin} {bg}".format(
+        full_cmd = "{pre}{cmd} > {stdout} 2> {stderr} < {stdin}".format(
             pre=pre,
             cmd=cmd,
             stdin=stdin,
             stdout=stdout,
             stderr=stderr,
-            bg=("&" if background else "")
         )
 
-        if sudo and ';' in cmd:
-            full_cmd += "\""
+        full_cmd += "\""
 
         # Prepare arguments for invoke/fabric
         if background:
