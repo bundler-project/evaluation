@@ -3,6 +3,7 @@ import agenda
 import itertools
 import random
 import toml
+import os
 
 def read_config(args):
     agenda.task("Reading config file: {}".format(args.config))
@@ -15,6 +16,16 @@ def read_config(args):
             fatal_error("Failed to parse config")
             raise e
         check_config(config)
+    bundler_root = config['structure']['bundler_root']
+    config['box_root'] = os.path.join(bundler_root, "bundler")
+    config['experiment_root'] = os.path.join(bundler_root, "experiments")
+    config['local_experiment_dir'] = "./experiments"
+    config['distribution_dir'] = os.path.join(bundler_root, 'distributions')
+    config['etg_client_path'] = os.path.join(config['structure']['bundler_root'], "empirical-traffic-gen/bin/etgClient")
+    config['etg_server_path'] = os.path.join(config['structure']['bundler_root'], "empirical-traffic-gen/run-servers.py")
+    config['parameters']['bg_port_end'] = config['parameters']['bg_port_start'] + 1000
+    config['experiment_dir'] = os.path.join(config['experiment_root'], config['experiment_name'])
+    config['ccp_dir'] = os.path.join(bundler_root, 'ccp')
     return config
 
 def check_config(config):

@@ -59,9 +59,9 @@ class ConnectionWrapper(Connection):
             pre += "screen -d -m "
         #escape the strings
         cmd = cmd.replace("\"", "\\\"")
-        pre += "bash -c \""
         if sudo:
             pre += "sudo "
+        pre += "bash -c \""
         if ignore_out:
             stdin="/dev/null"
             stdout="/dev/null"
@@ -127,6 +127,10 @@ class ConnectionWrapper(Connection):
                 print(res.stdout)
             sys.exit(1)
 
+    def local_path(self, path):
+        r = self.run(f"ls {path}")
+        return r.stdout.strip().replace("'", "")
+
     def put(self, local_file, remote=None, preserve_mode=True):
         if remote and remote[0] == "~":
             remote = remote[2:]
@@ -159,23 +163,23 @@ class ConnectionWrapper(Connection):
             input("")
 
         if not self.dry:
-            return super().get(remote_file, local, preserve_mode)
+            return super().get(remote_file, local=local, preserve_mode=preserve_mode)
         else:
             return FakeResult()
 
-def update_sysctl(conns, config):
+def update_sysctl(machines, config):
     if 'sysctl' in config:
         agenda.task("Updating sysctl")
 
-        for (addr, conn) in conns.items():
+        for (name, conn) in set((m, machines[m]) for m in machines if m in ("sender", "inbox", "outbox", "receiver")):
             if config['args'].verbose or config['args'].dry_run:
-                agenda.subtask(addr)
+                agenda.subtask(f"{name} <-> {conn.addr}")
 
             for k in config['sysctl']:
                 v = config['sysctl'][k]
                 expect(
-                    conn.run("sysctl -w {k}=\"{v}\"".format(k=k,v=v), sudo=True),
-                    "Failed to set {k} on {addr}".format(k=k, addr=addr)
+                    conn.run(f"sysctl -w {k}=\"{v}\"", sudo=True),
+                    f"Failed to set {k} on {conn.addr}"
                 )
 
 def disable_tcp_offloads(config, machines):
@@ -218,9 +222,9 @@ def start_tcpprobe(config, sender):
 
     return tcpprobe_out
 
-def kill_leftover_procs(config, conns, verbose=False):
+def kill_leftover_procs(config, machines, verbose=False):
     agenda.subtask("Kill leftover experiment processes")
-    for (addr, conn) in conns.items():
+    for (name, conn) in set((m, machines[m]) for m in machines if m in ("sender", "inbox", "outbox", "receiver")):
         proc_regex = "|".join(["inbox", "outbox", *config['ccp'].keys(), "iperf", "etgClient", "etgServer", "ccp_const"])
         conn.run(
             "pkill -9 \"({search})\"".format(

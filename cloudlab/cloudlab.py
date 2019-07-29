@@ -153,7 +153,7 @@ def make_cloudlab_topology(config, headless=False):
     config['topology']['sender'] = senders[0]
     config['topology']['inbox'] = senders[1]
     config['topology']['outbox'] = receivers[0]
-    config['topology']['receiver'] = receivers[1]
+    config['topology']['receiver'] = receivers[0] # can't set up the forwarding without VPN
     return config
 
 ip_addr_rgx = re.compile(r"\w+:\W*(?P<dev>\w+).*inet (?P<addr>[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)")
@@ -161,6 +161,8 @@ ip_addr_rgx = re.compile(r"\w+:\W*(?P<dev>\w+).*inet (?P<addr>[0-9]+\.[0-9]+\.[0
 def get_interfaces(config, machines):
     agenda.section("Get Cloudlab node interfaces")
     for m in machines:
+        if m == 'self':
+            continue
         agenda.task(machines[m].addr)
         conn = machines[m]
         ifaces = conn.run("ip -4 -o addr").stdout.strip().split("\n")
@@ -177,6 +179,8 @@ def init_repo(config, machines):
     clone = f'git clone --recurse-submodules -b cloudlab https://github.com/bundler-project/evaluation {root}'
 
     for m in machines:
+        if m == 'self':
+            continue
         agenda.task(machines[m].addr)
         agenda.subtask("cloning eval repo")
         machines[m].verbose = True

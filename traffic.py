@@ -162,13 +162,14 @@ class CBRTraffic(Traffic):
         config['iteration_outputs'].append((node, ccp_out))
         return iperf_out
 
-def create_etg_config(global_config, f, traffic):
+def create_etg_config(node, global_config, f, traffic):
     port_start = int(global_config['parameters']['bg_port_start'])
     num_conns = int(traffic.num_conns)
     num_backlogged = int(traffic.num_backlogged)
     for p in range(port_start, port_start + num_conns):
         f.write("server {} {}\n".format(global_config['topology']['sender']['ifaces'][0]['addr'], p))
-    f.write("req_size_dist {}\n".format(os.path.expanduser(os.path.join(global_config['distribution_dir'], traffic.distribution))))
+    dist_full_path = node.local_path(os.path.join(global_config['distribution_dir'], traffic.distribution))
+    f.write(f"req_size_dist {dist_full_path}\n")
     f.write("fanout {}\n".format(traffic.fanout))
     if num_backlogged:
         f.write("persistent_servers {}\n".format(num_backlogged))
@@ -193,13 +194,13 @@ class PoissonTraffic(Traffic):
             ))
 
         i=1
-        etg_config_path = os.path.join(config['iteration_dir'], "etgConfig{}".format(i))
+        etg_config_path = os.path.join(config['iteration_dir'], f"etgConfig{i}")
         while node.file_exists(etg_config_path) and not config['args'].dry_run:
             i+=1
-            etg_config_path = os.path.join(config['iteration_dir'], "etgConfig{}".format(i))
+            etg_config_path = os.path.join(config['iteration_dir'], f"etgConfig{i}")
         with io.StringIO() as etg_config:
-            create_etg_config(config, etg_config, traffic)
-            node.put(etg_config, remote=os.path.join(config['iteration_dir'], "etgConfig{}".format(i)))
+            create_etg_config(node, config, etg_config, traffic)
+            node.put(etg_config, remote=os.path.join(config['iteration_dir'], f"etgConfig{i}"))
 
         etg_out = os.path.join(config['iteration_dir'], "{}".format(i))
 
@@ -262,7 +263,7 @@ class PoissonTraffic(Traffic):
         if num_servers_running != traffic.num_conns:
             fatal_warn("Traffic pattern requested {} servers, but only {} are running properly.".format(traffic.num_conns, num_servers_running), exit=False)
             with io.BytesIO() as f:
-                node.get(os.path.expanduser(etg_out), local=f)
+                node.get(node.local_path(etg_out), local=f)
                 print(f.getvalue().decode("utf-8"))
             sys.exit(1)
 

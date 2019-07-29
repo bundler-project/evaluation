@@ -17,6 +17,8 @@ from topology import *
 from util import *
 from zulip_notify import zulip_notify
 
+import pdb
+
 ###################################################################################################
 # Parse arguments
 ###################################################################################################
@@ -46,9 +48,6 @@ parser.add_argument('--details', type=str, help="extra information to include in
 def get_inbox_binary(config):
    return os.path.join(config['structure']['bundler_root'], "bundler/target/debug/inbox")
 
-def get_outbox_binary(config):
-   return os.path.join(config['structure']['bundler_root'], "bundler/target/debug/outbox")
-
 def check_etg(config, node):
     expect(
         node.run("mkdir -p {}".format(config['distribution_dir'])),
@@ -71,97 +70,6 @@ def check_receiver(config, receiver):
     agenda.task("mahimahi (receiver)")
     if not receiver.prog_exists("mm-delay"):
         fatal_warn("Receiver does not have mahimahi installed.")
-
-def outbox_output_location(config):
-    return os.path.join(config['iteration_dir'], 'outbox.log')
-
-def start_outbox(config, in_mahimahi=True):
-    outbox_output = outbox_output_location(config)
-    outbox_cmd = "sudo {path} --filter \"{pcap_filter}\" --iface {iface} --inbox {inbox_addr} --sample_rate {sample_rate} {extra}".format(
-        path=get_outbox_binary(config),
-        pcap_filter="src portrange {}-{}".format(config['parameters']['bg_port_start'], config['parameters']['bg_port_end']),
-        iface="ingress" if in_mahimahi else config['topology']['outbox']['ifaces'][0]['dev'],
-        inbox_addr='{}:{}'.format(config['topology']['inbox']['ifaces'][1]['addr'], config['topology']['inbox']['listen_port']),
-        sample_rate=config['parameters']['initial_sample_rate'],
-        extra="--no_ethernet" if in_mahimahi else '',
-    )
-    outbox_run = f"{outbox_cmd} > {outbox_output} 2> {outbox_output} &"
-    return outbox_run
-
-def start_traffic_mahimahi(config, outbox, with_outbox=True, emulation_env=None, bundle_client=None, cross_client=None):
-    mm_inner = io.StringIO()
-    mm_inner.write("""#!/bin/bash
-set -x
-
-{outbox_run}
-
-sleep 1
-
-pids=()
-{cross_clients}
-{bundle_clients}
-
-for pid in ${{pids[*]}}; do
-    wait $pid
-done
-""".format(
-        outbox_run=start_outbox(config, in_mahimahi=emulation_env) if with_outbox else '',
-        cross_clients='\n'.join(["({}) &\npids+=($!)".format(c) for c in cross_client]),
-        bundle_clients='\n'.join(["({}) &\npids+=($!)".format(c) for c in bundle_client]),
-    ))
-
-    mm_inner_path = os.path.join(config['iteration_dir'], 'mm_inner.sh')
-    outbox.put(mm_inner, remote=mm_inner_path)
-    outbox.run("chmod +x {}".format(mm_inner_path))
-
-    if emulation_env:
-        agenda.subtask("Starting traffic in emulation env ({})".format(emulation_env))
-        queue_args = ''
-        if emulation_env.num_bdp != 'inf':
-            bdp = int((emulation_env.rate * 1000000.00 / 8.0) * (emulation_env.rtt / 1000.0) / 1500.0)
-            buf_pkts = emulation_env.num_bdp * bdp
-            if emulation_env.ecmp:
-                queue_args = f'--downlink-queue="ecmp" --uplink-queue="droptail" \
-                    --downlink-queue-args="packets={buf_pkts},\
-                    queues={emulation_env.ecmp.queues},\
-                    mean_jitter={emulation_env.ecmp.mean_jitter},\
-                    nonworkconserving={(1 if emulation_env.ecmp.nonworkconserving else 0)}"\
-                    --uplink-queue-args="packets={buf_pkts}"'
-            elif emulation_env.sfq:
-                queue_args = '--downlink-queue="akshayfq"\
-                    --downlink-queue-args="queues={queues},packets={buf}"\
-                    --uplink-queue="droptail"\
-                    --uplink-queue-args="packets={buf}"'.format(
-                    queues=500, # TODO arbitrary for now
-                    buf=buf_pkts,
-                )
-            else:
-                queue_args = f'--downlink-queue="droptail"\
-                    --uplink-queue="droptail"\
-                    --downlink-queue-args="packets={buf}"\
-                    --uplink-queue-args="packets={buf_pkts}"'
-        if config['args'].dry_run:
-            print("cat mm_inner.sh\n{}".format(mm_inner.getvalue()))
-        outbox.verbose = True
-        expect(
-            outbox.run(
-                "mm-delay {delay} mm-link --cbr {rate}M {rate}M {queue_args} --downlink-log=downlink.log {inner}".format(
-                    delay=int(emulation_env.rtt / 2),
-                    rate=emulation_env.rate,
-                    queue_args=queue_args,
-                    inner=mm_inner_path,
-                ),
-                wd=config['iteration_dir'],
-            ),
-            "Failed to start mahimahi shell on receiver"
-        )
-        config['iteration_outputs'].append((outbox, os.path.join(config['iteration_dir'], 'downlink.log')))
-        outbox.verbose = False
-    else:
-        agenda.subtask("Starting traffic, no emulation")
-        outbox.run(mm_inner_path, background=True)
-    config['iteration_outputs'].append((outbox, outbox_output_location(config)))
-
 
 def start_inbox(config, inbox, qtype, q_buffer_size):
     agenda.subtask("Starting inbox")
@@ -192,18 +100,9 @@ def start_inbox(config, inbox, qtype, q_buffer_size):
 
 def prepare_directories(config, conns):
     agenda.task("Preparing result directories")
-    bundler_root = config['structure']['bundler_root']
-    config['box_root'] = os.path.join(bundler_root, "bundler")
-    config['experiment_root'] = os.path.join(bundler_root, "experiments")
 
-    config['experiment_dir'] = os.path.join(config['experiment_root'], config['experiment_name'])
-    config['ccp_dir'] = os.path.join(bundler_root, 'ccp')
-    config['distribution_dir'] = os.path.join(bundler_root, 'distributions')
-    config['etg_client_path'] = os.path.join(config['structure']['bundler_root'], "empirical-traffic-gen/bin/etgClient")
-    config['etg_server_path'] = os.path.join(config['structure']['bundler_root'], "empirical-traffic-gen/run-servers.py")
-    config['parameters']['bg_port_end'] = config['parameters']['bg_port_start'] + 1000
-
-    if os.path.exists(os.path.expanduser(config['experiment_dir'])):
+    local_experiment_dir = config['local_experiment_dir']
+    if os.path.exists(local_experiment_dir):
         if not (config['args'].skip_existing or config['args'].overwrite_existing):
             fatal_warn("There are existing results for this experiment.\nYou must run this script with either --skip or --overwrite to specify how to proceed.")
 
@@ -216,7 +115,7 @@ def prepare_directories(config, conns):
             elif got == 'n':
                 sys.exit(1)
 
-    os.makedirs(os.path.expanduser(config['experiment_dir']), exist_ok=True)
+    os.makedirs(local_experiment_dir, exist_ok=True)
 
     for (addr, conn) in conns.items():
         if config['args'].verbose:
@@ -238,7 +137,7 @@ def prepare_directories(config, conns):
         )
 
     # Keep a copy of the config in the experiment directory for future reference
-    subprocess.check_output("cp {} {}".format(config['args'].config, config['experiment_dir']), shell=True)
+    subprocess.check_output(f"cp {config['args'].config} {local_experiment_dir}", shell=True)
 
 iteration_dirs = set()
 def prepare_iteration_dir(config, conns):
@@ -251,6 +150,8 @@ def prepare_iteration_dir(config, conns):
             conn.run("mkdir -p {}".format(config['iteration_dir'])),
             "Failed to create iteration directory {}".format(config['iteration_dir'])
         )
+
+    subprocess.call(f"mkdir -p {config['local_iteration_dir']}", shell=True)
 
 MahimahiConfig = namedtuple('MahimahiConfig', ['rtt', 'rate', 'ecmp', 'sfq', 'num_bdp'])
 
@@ -295,8 +196,8 @@ if __name__ == "__main__":
 
     agenda.section("Setup")
     prepare_directories(config, conns)
-    details_md = os.path.join(os.path.expanduser(config['experiment_dir']), 'details.md')
-    results_md = os.path.join(os.path.expanduser(config['experiment_dir']), 'results.md')
+    details_md = os.path.join(config['local_experiment_dir'], 'details.md')
+    results_md = os.path.join(config['local_experiment_dir'], 'results.md')
     if not os.path.exists(details_md):
         with open(details_md, 'w') as f:
             f.write(args.details + "\n")
@@ -343,22 +244,12 @@ if __name__ == "__main__":
         progress = "{}/{}".format(str(i+1).zfill(max_digits), total_exps)
         agenda.task("{} | {}".format(progress, exp))
 
-        kill_leftover_procs(config, conns)
+        kill_leftover_procs(config, machines)
 
         #TODO get exact system time that each program starts
 
         bundle_traffic = list(create_traffic_config(exp.bundle_traffic, exp))
         cross_traffic = list(create_traffic_config(exp.cross_traffic, exp))
-
-        mahimahiCfg = None
-        if 'cloudlab' not in config['topology']:
-            mahimahiCfg = MahimahiConfig(
-                rate=exp.rate,
-                rtt=exp.rtt,
-                num_bdp=exp.bdp,
-                sfq=(exp.alg['name'] == "nobundler" and exp.sch == "sfq"),
-                ecmp=None
-            )
 
         name = exp.alg['name']
         exp_alg_iteration_name = name + "." + ".".join("{}={}".format(k,v) for k,v in exp.alg.items() if k != 'name')
@@ -374,7 +265,8 @@ if __name__ == "__main__":
         )
 
         config['iteration_dir'] = os.path.join(config['experiment_dir'], iteration_name)
-        if os.path.exists(os.path.expanduser(config['iteration_dir'])):
+        config['local_iteration_dir'] = os.path.join(config['local_experiment_dir'], iteration_name)
+        if os.path.exists(config['local_iteration_dir']):
             if config['args'].skip_existing:
                 agenda.subtask("skipping experiment")
                 continue
@@ -390,6 +282,8 @@ if __name__ == "__main__":
         ##### RUN EXPERIMENT
 
         start = time.time()
+
+        # starting inbox is topology-independent
         if exp.alg['name'] != "nobundler":
             inbox_out = start_inbox(config, machines['inbox'], exp.sch, config['parameters']['qdisc_buf_size'])
             ccp_out = start_ccp(config, machines['inbox'], exp.alg)
@@ -400,65 +294,31 @@ if __name__ == "__main__":
             #TODO figure out how to check for and kill dd, it's a substring in other process names
             tcpprobe_out = start_tcpprobe(config, machines['sender'])
 
-        bundle_out = list(start_multiple_server(config, machines['sender'], bundle_traffic))
-        if cross_traffic:
-            cross_src = machines['receiver']
-            if mahimahiCfg is None:
-                cross_src = machines['inbox'] # no emulation, cross traffic should traverse the network
-            cross_out = list(start_multiple_server(config, machines['receiver'], cross_traffic))
-
-        if mahimahiCfg is None:
-            cmd = start_outbox(config, in_mahimahi=False)
-            machines['outbox'].run(cmd, stdout=outbox_output_location(config), background=True)
-
-        bundle_client = list(start_multiple_client(
-            config,
-            machines['receiver'],
-            bundle_traffic,
-            True,
-            execute=(mahimahiCfg is None)))
-        cross_client = list(start_multiple_client(
-            config,
-            machines['receiver'],
-            cross_traffic,
-            False,
-            execute=(mahimahiCfg is None)))
-
-        if mahimahiCfg is not None:
-            start_traffic_mahimahi(
-                config,
-                machines['receiver'],
-                emulation_env=mahimahiCfg,
-                bundle_client=bundle_client,
-                cross_client=cross_client,
-                nobundler = (exp.alg['name'] == "nobundler"),
-            )
+        config = topo.run_traffic(config, exp, bundle_traffic, cross_traffic)
 
         elapsed = time.time() - start
         total_elapsed += elapsed
         agenda.subtask("Ran for {} seconds".format(elapsed))
-        kill_leftover_procs(config, conns)
+        kill_leftover_procs(config, machines)
 
         agenda.subtask("collecting results")
         for (m, fname) in config['iteration_outputs']:
-            if m != config['self']:
+            if 'self' not in config or m != config['self']:
                 try:
                     if fname.startswith("~/"):
                         fname = fname[2:]
-                    m.get(fname, local=os.path.expanduser(os.path.join(config['iteration_dir'], os.path.basename(fname))))
+                    m.get(fname, local=os.path.join(config['local_iteration_dir'], os.path.basename(fname)))
                 except Exception as e:
                     warn("could not get file {}: {}".format(fname, e), exit=False)
 
-    kill_leftover_procs(config, conns)
-    agenda.task("parsing results")
-
+    agenda.section("parsing results")
     if not args.dry_run:
         parse_args = {'downsample' : config['args'].downsample}
         if config['args'].rows:
             parse_args['rows'] = config['args'].rows
         if config['args'].cols:
             parser_args['cols'] = config['args'].cols
-        parse_outputs(config['experiment_dir'], parse_args)
+        parse_outputs(config['local_experiment_dir'], parse_args)
 
     zulip_notify("{total_exps} experiment(s) finished in **{elapsed}** seconds.\nView results here: {url}".format(
         total_exps=total_exps,

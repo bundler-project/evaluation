@@ -1,6 +1,7 @@
 import agenda
 from util import *
 from cloudlab.cloudlab import make_cloudlab_topology, bootstrap_cloudlab_topology
+from traffic import *
 
 def create_ssh_connections(config):
     agenda.task("Creating SSH connections")
@@ -26,6 +27,12 @@ def create_ssh_connections(config):
         machines[role] = conns[hostname]
 
     return (conns, machines)
+
+def get_outbox_binary(config):
+   return os.path.join(config['structure']['bundler_root'], "bundler/target/debug/outbox")
+
+def outbox_output_location(config):
+    return os.path.join(config['iteration_dir'], 'outbox.log')
 
 class MahimahiTopo:
     def __init__(self, config):
@@ -95,6 +102,126 @@ class MahimahiTopo:
             "Failed to set routing tables at outbox"
         )
 
+    def run_traffic(self, exp, config, bundle_traffic, cross_traffic):
+        machines = self.machines
+        mahimahiCfg = MahimahiConfig(
+            rate=exp.rate,
+            rtt=exp.rtt,
+            num_bdp=exp.bdp,
+            sfq=(exp.alg['name'] == "nobundler" and exp.sch == "sfq"),
+            ecmp=None
+        )
+
+        bundle_out = list(start_multiple_server(config, machines['sender'], bundle_traffic))
+        cross_out = list(start_multiple_server(config, machines['receiver'], cross_traffic))
+
+        bundle_client = list(start_multiple_client(
+            config,
+            machines['receiver'],
+            bundle_traffic,
+            True,
+            execute=False,
+        ))
+        cross_client = list(start_multiple_client(
+            config,
+            machines['receiver'],
+            cross_traffic,
+            False,
+            execute=False,
+        ))
+        return self.start_in_mahimahi(
+            config,
+            machines['receiver'],
+            emulation_env=mahimahiCfg,
+            bundle_client=bundle_client,
+            cross_client=cross_client,
+            nobundler = (exp.alg['name'] == "nobundler"),
+        )
+
+    def start_outbox(self, config):
+        outbox_output = outbox_output_location(config)
+        outbox_cmd = "sudo {path} --filter \"{pcap_filter}\" --iface {iface} --inbox {inbox_addr} --sample_rate {sample_rate} --no-ethernet".format(
+            path=get_outbox_binary(config),
+            pcap_filter="src portrange {}-{}".format(config['parameters']['bg_port_start'], config['parameters']['bg_port_end']),
+            iface="ingress",
+            inbox_addr='{}:{}'.format(
+                config['topology']['inbox']['ifaces'][1]['addr'],
+                config['topology']['inbox']['listen_port'],
+            ),
+            sample_rate=config['parameters']['initial_sample_rate'],
+        )
+        outbox_run = f"{outbox_cmd} > {outbox_output} 2> {outbox_output} &"
+        return outbox_run
+
+    def start_in_mahimahi(self, config, outbox, emulation_env, bundle_client, cross_client, nobundler):
+        mm_inner = io.StringIO()
+        mm_inner.write("""#!/bin/bash
+set -x
+
+{outbox_run}
+
+sleep 1
+
+pids=()
+{cross_clients}
+{bundle_clients}
+
+for pid in ${{pids[*]}}; do
+    wait $pid
+done
+    """.format(
+            outbox_run=self.start_outbox(config) if not nobundler else '',
+            cross_clients='\n'.join(["({}) &\npids+=($!)".format(c) for c in cross_client]),
+            bundle_clients='\n'.join(["({}) &\npids+=($!)".format(c) for c in bundle_client]),
+        ))
+
+        mm_inner_path = os.path.join(config['iteration_dir'], 'mm_inner.sh')
+        outbox.put(mm_inner, remote=mm_inner_path)
+        outbox.run("chmod +x {}".format(mm_inner_path))
+
+        agenda.subtask("Starting traffic in emulation env ({})".format(emulation_env))
+        queue_args = ''
+        if emulation_env.num_bdp != 'inf':
+            bdp = int((emulation_env.rate * 1000000.00 / 8.0) * (emulation_env.rtt / 1000.0) / 1500.0)
+            buf_pkts = emulation_env.num_bdp * bdp
+            if emulation_env.ecmp:
+                queue_args = f'--downlink-queue="ecmp" --uplink-queue="droptail" \
+                    --downlink-queue-args="packets={buf_pkts},\
+                    queues={emulation_env.ecmp.queues},\
+                    mean_jitter={emulation_env.ecmp.mean_jitter},\
+                    nonworkconserving={(1 if emulation_env.ecmp.nonworkconserving else 0)}"\
+                    --uplink-queue-args="packets={buf_pkts}"'
+            elif emulation_env.sfq:
+                queue_args = '--downlink-queue="akshayfq"\
+                    --downlink-queue-args="queues={queues},packets={buf}"\
+                    --uplink-queue="droptail"\
+                    --uplink-queue-args="packets={buf}"'.format(
+                    queues=500, # TODO arbitrary for now
+                    buf=buf_pkts,
+                )
+            else:
+                queue_args = f'--downlink-queue="droptail"\
+                    --uplink-queue="droptail"\
+                    --downlink-queue-args="packets={buf}"\
+                    --uplink-queue-args="packets={buf_pkts}"'
+        if config['args'].dry_run:
+            print("cat mm_inner.sh\n{}".format(mm_inner.getvalue()))
+        expect(
+            outbox.run(
+                "mm-delay {delay} mm-link --cbr {rate}M {rate}M {queue_args} --downlink-log=downlink.log {inner}".format(
+                    delay=int(emulation_env.rtt / 2),
+                    rate=emulation_env.rate,
+                    queue_args=queue_args,
+                    inner=mm_inner_path,
+                ),
+                wd=config['iteration_dir'],
+            ),
+            "Failed to start mahimahi shell on receiver"
+        )
+        config['iteration_outputs'].append((outbox, os.path.join(config['iteration_dir'], 'downlink.log')))
+        config['iteration_outputs'].append((outbox, outbox_output_location(config)))
+        return config
+
 class CloudlabTopo:
     def __init__(self, config):
         config = make_cloudlab_topology(config, headless=True)
@@ -107,7 +234,7 @@ class CloudlabTopo:
 
     def setup_routing(self):
         """
-        sender --> inbox --> outbox --> receiver
+        sender --> inbox --> ( outbox | receiver )
 
         Don't bother with the reverse path
         """
@@ -137,22 +264,80 @@ class CloudlabTopo:
             "Failed to set IP forwarding at inbox"
         )
 
-        expect(
-            machines['inbox'].run(
-                "ip route del {receiver}; ip route add {receiver} via {outbox}".format(
-                    receiver = config['topology']['receiver']['ifaces'][0]['addr'],
-                    outbox = config['topology']['outbox']['ifaces'][0]['addr'],
-                ),
-                sudo=True
+    def run_traffic(self, config, exp, bundle_traffic, cross_traffic):
+        self.config = config
+        if exp.alg['name'] == "nobundler" and exp.sch != "fifo":
+            agenda.subfailure("Cannot run nobundler non-fifo in real-world")
+            return
+
+        agenda.subtask("Start outbox")
+        self.start_outbox(config, self.machines['outbox'])
+        self.config['iteration_outputs'].append((self.machines['outbox'], outbox_output_location(self.config)))
+
+        bundle_out = list(start_multiple_server(config, self.machines['sender'], bundle_traffic))
+        cross_out = list(start_multiple_server(config, self.machines['inbox'], cross_traffic))
+
+        bundle_client = list(start_multiple_client(
+            config,
+            self.machines['receiver'],
+            bundle_traffic,
+            True,
+            execute=False,
+        ))
+        cross_client = list(start_multiple_client(
+            config,
+            self.machines['receiver'],
+            cross_traffic,
+            False,
+            execute=False,
+        ))
+
+        return self.start_cloudlab(bundle_client, cross_client)
+
+    def start_outbox(self, config, outbox):
+        outbox_output = outbox_output_location(config)
+        outbox_cmd = "sudo {path} --filter \"{pcap_filter}\" --iface {iface} --inbox {inbox_addr} --sample_rate {sample_rate}".format(
+            path=get_outbox_binary(config),
+            pcap_filter="src portrange {}-{}".format(config['parameters']['bg_port_start'], config['parameters']['bg_port_end']),
+            iface=config['topology']['outbox']['ifaces'][0]['dev'],
+            inbox_addr='{}:{}'.format(
+                config['topology']['inbox']['ifaces'][0]['addr'],
+                config['topology']['inbox']['listen_port'],
             ),
-            "Failed to set forward route at inbox"
+            sample_rate=config['parameters']['initial_sample_rate'],
         )
 
-        agenda.subtask("outbox")
-        expect(
-            machines['outbox'].run(
-                "sysctl net.ipv4.ip_forward=1",
-                sudo=True
-            ),
-            "Failed to set IP forwarding at inbox"
+        outbox.run(
+            outbox_cmd,
+            stdout=outbox_output_location(config),
+            stderr=outbox_output_location(config),
+            background=True,
         )
+
+    def start_cloudlab(self, bundle_client, cross_client):
+        do_stuff = io.StringIO()
+        do_stuff.write("""#!/bin/bash
+set -x
+
+pids=()
+{cross_clients}
+{bundle_clients}
+
+for pid in ${{pids[*]}}; do
+    wait $pid
+done
+    """.format(
+            cross_clients='\n'.join(["({}) &\npids+=($!)".format(c) for c in cross_client]),
+            bundle_clients='\n'.join(["({}) &\npids+=($!)".format(c) for c in bundle_client]),
+        ))
+
+        sh_path = os.path.join(self.config['iteration_dir'], 'run_traffic.sh')
+        self.machines['receiver'].put(do_stuff, remote=sh_path)
+        self.machines['receiver'].run("chmod +x {}".format(sh_path))
+
+        expect(
+            self.machines['receiver'].run(sh_path, wd=self.config['iteration_dir']),
+            "Failed to start traffic on receiver"
+        )
+
+        return self.config
