@@ -111,16 +111,18 @@ def launch(driver):
 def check_exisiting_experiment(driver):
     agenda.task("Check for existing experiment")
     driver.get("https://www.cloudlab.us/user-dashboard.php#experiments")
-    table = driver.find_element_by_id("experiments_table")
-    elements = [e.text.split()[0] for e in table.find_elements_by_xpath("//table/tbody") if len(e.text.split()) > 0]
-    if len(elements) == 0:
+    table = None
+    try:
+        table = driver.find_element_by_id("experiments_table")
+    except:
         agenda.subfailure("No existing experiment found")
         return None
-    else:
-        agenda.subtask("Existing experiment found")
-        driver.find_element_by_link_text(elements[0]).click()
-        time.sleep(1)
-        return get_machines_from_experiment(driver)
+
+    elements = [e.text.split()[0] for e in table.find_elements_by_xpath("//table/tbody") if len(e.text.split()) > 0]
+    agenda.subtask("Existing experiment found")
+    driver.find_element_by_link_text(elements[0]).click()
+    time.sleep(1)
+    return get_machines_from_experiment(driver)
 
 def get_machines_from_experiment(driver):
     driver.find_element_by_id("show_listview_tab").click()
