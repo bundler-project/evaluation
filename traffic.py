@@ -35,6 +35,7 @@ class IperfTraffic(Traffic):
             report_interval=traffic.report_interval,
             length=traffic.length,
             num_flows=traffic.num_flows,
+            alg=traffic.alg,
             delay=traffic.start_delay
         )
 

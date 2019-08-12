@@ -47,9 +47,6 @@ parser.add_argument('--name', type=str, help="name of experiment directory", req
 parser.add_argument('--details', type=str, help="extra information to include in experiment report", default="")
 ###################################################################################################
 
-def get_inbox_binary(config):
-   return os.path.join(config['structure']['bundler_root'], "bundler/target/debug/inbox")
-
 def check_etg(config, node):
     expect(
         node.run("mkdir -p {}".format(config['distribution_dir'])),
@@ -72,33 +69,6 @@ def check_receiver(config, receiver):
     agenda.task("mahimahi (receiver)")
     if not receiver.prog_exists("mm-delay"):
         fatal_warn("Receiver does not have mahimahi installed.")
-
-def start_inbox(config, inbox, qtype, q_buffer_size):
-    agenda.subtask("Starting inbox")
-
-    inbox_out = os.path.join(config['iteration_dir'], "inbox.log")
-    res = inbox.run(
-        "{path} --iface={iface} --port={port} --sample_rate={sample} --qtype={qtype} --buffer={buf}".format(
-            path=get_inbox_binary(config),
-            iface=config['topology']['inbox']['ifaces'][1]['dev'],
-            port=config['topology']['inbox']['listen_port'],
-            sample=config['parameters']['initial_sample_rate'],
-            qtype=qtype,
-            buf=q_buffer_size
-        ),
-        sudo=True,
-        background=True,
-        stdout=inbox_out,
-        stderr=inbox_out,
-    )
-
-    if not config['args'].dry_run:
-        time.sleep(10)
-    inbox.check_proc('inbox', inbox_out)
-    inbox.check_file('Wait for CCP to install datapath program', inbox_out)
-
-    config['iteration_outputs'].append((inbox, inbox_out))
-    return inbox_out
 
 def prepare_directories(config, conns):
     agenda.task("Preparing result directories")
@@ -285,7 +255,7 @@ if __name__ == "__main__":
 
         # starting inbox is topology-independent
         if exp.alg['name'] != "nobundler":
-            inbox_out = start_inbox(config, machines['inbox'], exp.sch, config['parameters']['qdisc_buf_size'])
+            inbox_out = topo.start_inbox(exp.sch, config['parameters']['qdisc_buf_size'])
             ccp_out = start_ccp(config, machines['inbox'], exp.alg)
             machines['inbox'].check_file('Inbox ready', inbox_out)
             agenda.subtask("Inbox ready")

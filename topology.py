@@ -28,6 +28,9 @@ def create_ssh_connections(config):
 
     return (conns, machines)
 
+def get_inbox_binary(config):
+   return os.path.join(config['structure']['bundler_root'], "bundler/target/debug/inbox")
+
 def get_outbox_binary(config):
    return os.path.join(config['structure']['bundler_root'], "bundler/target/debug/outbox")
 
@@ -147,6 +150,36 @@ class MahimahiTopo:
             cross_client=cross_client,
             nobundler = (exp.alg['name'] == "nobundler"),
         )
+
+    def start_inbox(self, qtype, q_buffer_size):
+        config = self.config
+        inbox = self.machines['inbox']
+
+        agenda.subtask("Starting inbox")
+
+        inbox_out = os.path.join(config['iteration_dir'], "inbox.log")
+        res = inbox.run(
+            "{path} --iface={iface} --port={port} --sample_rate={sample} --qtype={qtype} --buffer={buf}".format(
+                path=get_inbox_binary(config),
+                iface=config['topology']['inbox']['ifaces'][1]['dev'],
+                port=config['topology']['inbox']['listen_port'],
+                sample=config['parameters']['initial_sample_rate'],
+                qtype=qtype,
+                buf=q_buffer_size
+            ),
+            sudo=True,
+            background=True,
+            stdout=inbox_out,
+            stderr=inbox_out,
+        )
+
+        if not config['args'].dry_run:
+            time.sleep(10)
+        inbox.check_proc('inbox', inbox_out)
+        inbox.check_file('Wait for CCP to install datapath program', inbox_out)
+
+        config['iteration_outputs'].append((inbox, inbox_out))
+        return inbox_out
 
     def start_outbox(self, config):
         outbox_output = outbox_output_location(config)
@@ -303,6 +336,36 @@ class CloudlabTopo:
         ))
 
         return self.start_cloudlab(bundle_client, cross_client)
+
+    def start_inbox(self, qtype, q_buffer_size):
+        config = self.config
+        inbox = self.machines['inbox']
+
+        agenda.subtask("Starting inbox")
+
+        inbox_out = os.path.join(config['iteration_dir'], "inbox.log")
+        res = inbox.run(
+            "{path} --iface={iface} --port={port} --sample_rate={sample} --qtype={qtype} --buffer={buf}".format(
+                path=get_inbox_binary(config),
+                iface=config['topology']['inbox']['ifaces'][0]['dev'],
+                port=config['topology']['inbox']['listen_port'],
+                sample=config['parameters']['initial_sample_rate'],
+                qtype=qtype,
+                buf=q_buffer_size
+            ),
+            sudo=True,
+            background=True,
+            stdout=inbox_out,
+            stderr=inbox_out,
+        )
+
+        if not config['args'].dry_run:
+            time.sleep(10)
+        inbox.check_proc('inbox', inbox_out)
+        inbox.check_file('Wait for CCP to install datapath program', inbox_out)
+
+        config['iteration_outputs'].append((inbox, inbox_out))
+        return inbox_out
 
     def start_outbox(self, config, outbox):
         outbox_output = outbox_output_location(config)
