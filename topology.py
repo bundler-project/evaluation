@@ -102,6 +102,14 @@ class MahimahiTopo:
             "Failed to set routing tables at outbox"
         )
 
+	expect(
+	    machines['outbox'].run(
+		"sysctl net.ipv4.ip_forward=1",
+		sudo=True
+	    ),
+	    "Failed to set IP forwarding at outbox"
+	)
+
     def run_traffic(self, exp, config, bundle_traffic, cross_traffic):
         machines = self.machines
         mahimahiCfg = MahimahiConfig(
