@@ -2,7 +2,7 @@ import glob
 import os
 import subprocess
 
-def write_rmd(experiment_root, csv_name, downsample=None, fields="zt, rout, rin, curr_rate, curr_q, elasticity2", rows=None, cols=None):
+def write_rmd(experiment_root, csv_name, num_ccp, downsample=None, interact=False, fields="zt, rout, rin, curr_rate, curr_q, elasticity2", rows=None, cols=None):
     experiment_root = os.path.abspath(os.path.expanduser(experiment_root))
     experiment_name = os.path.basename(experiment_root)
 
@@ -25,6 +25,13 @@ def write_rmd(experiment_root, csv_name, downsample=None, fields="zt, rout, rin,
         grid.append(cols)
     grid_str = ','.join(grid)
 
+    if interact:
+        interact_str = ""
+        static_str = "#"
+    else:
+        interact_str = "#"
+        static_str = ""
+
     def format_title(experiment_name):
         return experiment_name
 
@@ -33,30 +40,52 @@ def write_rmd(experiment_root, csv_name, downsample=None, fields="zt, rout, rin,
 ```{{r mm{i}, fig.width=15, fig.align='center', echo=FALSE}}
 df_m_{i} <- read.csv("{path}", sep=" ")  # header=FALSE, col.names=c("t", "total", "delay","bundle", "cross"))
 df_m_{i} <- df_m_{i} %>% gather("measurement", "value", total, delay, bundle, cross)
-df_switch <- read.csv("{switch_path}", sep=",")
+{remove}df_switch_{i} <- read.csv("{switch_path}", sep=",")
 plt_m_{i} <- ggplot(df_m_{i}, aes(x=t, y=value, color=measurement)) +
     geom_line() +
-    geom_rect(data=df_switch, inherit.aes=FALSE, aes(xmin=xmin,xmax=xmax,ymin=0,ymax=max(df_m_{i}$value),fill="xtcp"), alpha=0.2) +
+    {remove}geom_rect(data=df_switch_{i}, inherit.aes=FALSE, aes(xmin=xmin,xmax=xmax,ymin=0,ymax=max(df_m_{i}$value),fill="xtcp"), alpha=0.2) +
     scale_fill_manual('Mode', values="black", labels=c("xtcp"))
-ggplotly(plt_m_{i})
+{interact_str}ggplotly(plt_m_{i})
+{static_str}plt_m_{i}
 ```"""
 
     g = glob.glob(experiment_root + '/**/mm-graph.tmp', recursive=True)
-    mm_plots = "\n".join([
-        mm_plt_fmt.format(i=i,path=path,title=format_title(path.split(experiment_name)[1]), switch_path="/".join(path.split("/")[:-1])+"/ccp_switch.parsed")
-        for (i,path) in enumerate(g)
-    ])
+    mm_plots = []
+    for (i,path) in enumerate(g):
+        switch_path = "/".join(path.split("/")[:-1])+"/ccp_switch.parsed"
+        if os.path.isfile(switch_path):
+            remove = ""
+        else:
+            remove = "#"
+        mm_plots.append(
+            mm_plt_fmt.format(
+                i=i,
+                path=path,
+                title=format_title(path.split(experiment_name)[1]),
+                switch_path=switch_path,
+                remove=remove,
+                interact_str=interact_str,
+                static_str=static_str,
+            )
+        )
+    mm_plots_str = "\n".join(mm_plots)
 
-    if len(g) < 3:
-        overview_fig_height = len(g) * 4
-    elif len(g) < 10:
-        overview_fig_height = len(g) * 2
-    elif len(g) < 50:
-        overview_fig_height = len(g) * 0.5
+
+    if num_ccp == 0: 
+        nimbus_plots = ""
     else:
-        overview_fig_height = 30
+        if len(g) < 3:
+            nimbus_fig_height = len(g) * 4
+        elif len(g) < 10:
+            nimbus_fig_height = len(g) * 2
+        elif len(g) < 50:
+            nimbus_fig_height = len(g) * 1
+        else:
+            nimbus_fig_height = 30
 
-    overview = """
+        nimbus_plots = """
+#### Nimbus
+
 ```{{r plot1, fig.width=15, fig.height={fig_height}, fig.align='center', echo=FALSE}}
 df <- read.csv("{csv}", sep=",", na.strings=c("","none"))
 df <- df %>% gather("measurement", "value", {fields})
@@ -65,15 +94,38 @@ plt <- ggplot(df, aes(x=elapsed, y=value, color=measurement)) +
     geom_line() +
     scale_x_continuous(breaks=seq(0, max(df$elapsed), by=5))
     #scale_y_continuous(breaks=seq(0, 1e+09,   by=10000000))
-ggplotly(plt)
+{interact_str}ggplotly(plt)
+{static_str}plt
 ```
 """.format(
-        csv = os.path.join(experiment_root, csv_name),
-        fields = fields,
-        wrap_str = wrap_str,
-        nrow = len(g),
-        fig_height = overview_fig_height
-    )
+            csv = os.path.join(experiment_root, csv_name),
+            fields = fields,
+            wrap_str = wrap_str,
+            nrow = len(g),
+            fig_height = nimbus_fig_height,
+            interact_str=interact_str,
+            static_str=static_str,
+        )
+
+    
+    fct_path = os.path.join(experiment_root, 'fcts.data')
+    if os.path.isfile(fct_path):
+        fct_plots = """
+#### Flow Completion Times
+
+```{{r fcts, fig.width=15, fig.height=6, fig.align='center', echo=FALSE}}
+df_fct <- read.csv("{csv}", sep=" ")
+df_fct$Duration <- df_fct$Duration.usec. / 1e6
+bw <- 12e6 # TODO make this configurable
+df_fct$ofct <- (df_fct$Size / bw) + 0.05
+df_fct$NormFct <- df_fct$Duration / df_fct$ofct
+fct_plt <- ggplot(df_fct, aes(x=NormFct, colour=alg)) + stat_ecdf() + scale_x_log10()
+fct_plt
+```""".format(
+            csv = fct_path,
+        )
+    else:
+        fct_plots = ""
 
     contents = """
 ---
@@ -100,12 +152,8 @@ suppressWarnings(suppressMessages(library(tidyr)))
 
 ### Plots
 
-Note: curr_q and elasticity2 have much smaller ranges. To see them on this plot,
-turn off (click on) the other measurements in the key to the right and then click
-on the "autoscale" button. You can hover to see exact values.
-
-#### Overview
-{overview}
+{nimbus_plots}
+{fct_plots}
 
 #### Mahimahi
 {mm_plots}
@@ -124,8 +172,10 @@ on the "autoscale" button. You can hover to see exact values.
         config = config,
         grid_str = grid_str,
         results = results,
-        overview = overview,
-        mm_plots = mm_plots,
+        commits = commits,
+        nimbus_plots = nimbus_plots,
+        fct_plots = fct_plots,
+        mm_plots = mm_plots_str,
     )
 
     rmd = os.path.join(experiment_root, 'exp.Rmd')

@@ -6,13 +6,14 @@ import re
 import subprocess
 import sys
 
-def parse_ccp_log(f, out, out_switch, header, prepend, fields, sample_rate):
+def parse_nimbus_log(f, out, out_switch, header, prepend, fields, sample_rate):
     i=0
     e2 = None
     xtcp_regions = []
     to_mode = None
     last_switch = 0
     xmax = 0
+    starting_mode = None
     for l in f:
         if '[nimbus] starting' in l:
             mode_expr = re.compile("flow_mode: ([^,]+)")
@@ -72,25 +73,31 @@ def parse_ccp_log(f, out, out_switch, header, prepend, fields, sample_rate):
     if not xtcp_regions and starting_mode == "XTCP":
         out_switch.write("{},{},-Inf,Inf\n".format(0, xmax))
 
-def parse_ccp_logs(dirname, sample_rate):
+def parse_ccp_logs(dirname, sample_rate, replot):
     agenda.subtask("ccp logs")
     fields = [9,17,19,27,29,35,13]
     log_header = "elapsed,rtt,zt,rout,rin,curr_rate,curr_q,elasticity2"
-    pattern = re.compile('(?P<sch>[a-z]+)_(?P<bw>[\d]+)_(?P<delay>[\d]+)/nimbus.(?P<args>([a-z_]+=[a-z_0-9]+.)+)/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/ccp.log')
+    pattern = re.compile('(?P<sch>[a-z]+)_(?P<bw>[\d]+)_(?P<delay>[\d]+)/(?P<alg>[a-z_]+).(?P<args>[a-z_]+=[a-z_0-9].+)?/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/ccp.log')
 
     g = glob.glob(dirname + "/**/ccp.log", recursive=True)
+
+    global_out_fname = os.path.join(dirname, 'ccp.parsed')
+    if not replot and os.path.isfile(global_out_fname):
+        return global_out_fname, len(g)
+
     for exp in g:
         exp_root = "/".join(exp.split("/")[:-1])
         with open(exp) as f, open(os.path.join(exp_root, "ccp.parsed"), 'w') as out, open(os.path.join(exp_root, "ccp_switch.parsed"), 'w') as out_switch:
             matches = pattern.search(exp)
-            if matches is not None:
-                sch, bw, delay, args, bg, cross, seed = matches.group('sch', 'bw', 'delay', 'args', 'bg', 'cross', 'seed')
-                args = [a.split("=") for a in args.split(".")]
-                exp_header = f"sch,bw,delay,{','.join(a[0] for a in args)},bundle,cross,seed"
+            if matches is not None and 'nimbus' in exp:
+                print(exp)
+                sch, bw, delay, args, bg, cross, seed, alg = matches.group('sch', 'bw', 'delay', 'args', 'bg', 'cross', 'seed', 'alg')
+                args = [a.split("=") for a in args.split(".")] if args else []
+                exp_header = f"sch,alg,rate,rtt,{','.join(a[0] for a in args)},bundle,cross,seed"
                 header = exp_header + "," + log_header
                 out.write(header + "\n")
-                prepend = f"{sch},{bw},{delay},{','.join(a[1] for a in args)},{bg},{cross},{seed}"
-                parse_ccp_log(f, out, out_switch, header, prepend, fields, sample_rate)
+                prepend = f"{sch},{alg},{bw},{delay},{','.join(a[1] for a in args)},{bg},{cross},{seed}"
+                parse_nimbus_log(f, out, out_switch, header, prepend, fields, sample_rate)
             else:
                 print(f"skipping {exp}, no regex match")
 
@@ -104,23 +111,36 @@ def parse_ccp_logs(dirname, sample_rate):
             if tail == 1:
                 tail = 2
 
-    return global_out_fname
+    return global_out_fname, len(g)
 
-def parse_mahimahi_logs(dirname, sample_rate):
+def parse_mahimahi_logs(dirname, sample_rate, replot):
     agenda.subtask("mahimahi logs")
+    pattern = re.compile('(?P<sch>[a-z]+)_(?P<bw>[\d]+)_(?P<delay>[\d]+)/(?P<alg>[a-zA-Z]+).(?P<args>[a-z_]+=[a-z_0-9].+)?/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/downlink.log')
     g = glob.glob(dirname + "/**/downlink.log", recursive=True)
     for exp in g:
-        exp_root = "/".join(exp.split("/")[:-1])
-        exp_root = os.path.dirname(exp)
-        subprocess.check_output("mm-graph {} 50 --fake --plot-direction ingress --agg \"5000:6000=bundle,8001:8004=cross\"".format(exp), shell=True, executable="/bin/bash")
-        subprocess.check_output("mv /tmp/mm-graph.tmp {}".format(exp_root), shell=True)
+        matches = pattern.search(exp)
+        if matches is not None:
+            delay = int(matches.group('delay'))
+            rtt = int(delay*2)
+            print(rtt,exp)
+            exp_root = "/".join(exp.split("/")[:-1])
+            exp_root = os.path.dirname(exp)
+            if not replot and os.path.isfile(os.path.join(exp_root, 'mm-graph.tmp')):
+                continue
+            subprocess.check_output("mm-graph {} {} --fake --plot-direction ingress --agg \"5000:6000=bundle,8000:9000=cross\"".format(exp, rtt), shell=True, executable="/bin/bash")
+            subprocess.check_output("mv /tmp/mm-graph.tmp {}".format(exp_root), shell=True)
+        else:
+            print(exp)
 
-def parse_etg_logs(dirname):
+def parse_etg_logs(dirname, replot):
     agenda.subtask("etg logs")
     outf = os.path.join(dirname, "fcts.data")
+    if not replot and os.path.isfile(outf):
+        return
     g = glob.glob(dirname + "/**/*reqs.out", recursive=True)
     some = None
     for exp in g:
+        print(exp)
         some = True
         exp_root = "/".join(exp.split("/")[:-1])
         exp_root = os.path.dirname(exp)
@@ -131,7 +151,7 @@ def parse_etg_logs(dirname):
     if some:
         subprocess.call(f"python3 columnize.py < tmp > {outf} && rm tmp", shell=True)
 
-def parse_outputs(root_path, graph_kwargs={}):
+def parse_outputs(root_path, replot=False, interact=False, graph_kwargs={}):
     experiment_root = os.path.abspath(os.path.expanduser(root_path))
 
     if 'downsample' in graph_kwargs:
@@ -139,11 +159,11 @@ def parse_outputs(root_path, graph_kwargs={}):
     else:
         sample_rate = 1
 
-    global_out_fname = parse_ccp_logs(experiment_root, sample_rate)
-    parse_mahimahi_logs(experiment_root, sample_rate)
-    parse_etg_logs(experiment_root)
+    global_out_fname, num_ccp = parse_ccp_logs(experiment_root, sample_rate, replot)
+    #parse_mahimahi_logs(experiment_root, sample_rate, replot)
+    parse_etg_logs(experiment_root, replot)
 
-    write_rmd(experiment_root, global_out_fname, **graph_kwargs)
+    write_rmd(experiment_root, global_out_fname, num_ccp, **graph_kwargs)
 
 if __name__ == "__main__":
     import argparse
@@ -154,7 +174,9 @@ if __name__ == "__main__":
     parser.add_argument("--fields", help="Which fields to plot")
     parser.add_argument("--rows", help="(Column name) by which to split into a grid vertically")
     parser.add_argument("--cols", help="(Column name) by which to split into a grid horizontally")
+    parser.add_argument('--replot', help="Force replot",action="store_true")
+    parser.add_argument("--interact", help="enable interactive mode for graphs",action="store_true")
     args = parser.parse_args()
-    graph_kwargs = dict((k,v) for k,v in vars(args).items() if (v and not k=='root'))
+    graph_kwargs = dict((k,v) for k,v in vars(args).items() if (v and not k=='root' and not k=='replot'))
 
-    parse_outputs(args.root, graph_kwargs=graph_kwargs)
+    parse_outputs(args.root, replot=args.replot, interact=args.interact, graph_kwargs=graph_kwargs)
