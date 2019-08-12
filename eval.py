@@ -289,6 +289,17 @@ if __name__ == "__main__":
             ccp_out = start_ccp(config, machines['inbox'], exp.alg)
             machines['inbox'].check_file('Inbox ready', inbox_out)
             agenda.subtask("Inbox ready")
+        else:
+            machines['inbox'].run(
+                    "tc qdisc del dev {iface} root".format(
+                        iface=config['topology']['inbox']['ifaces'][1]['dev']
+                    ), sudo=True
+            )
+            machines['inbox'].run(
+                    "tc qdisc add dev {iface} root bfifo limit 15mbit".format(
+                        iface=config['topology']['inbox']['ifaces'][1]['dev']
+                    ), sudo=True
+            )
 
         if config['args'].tcpprobe:
             #TODO figure out how to check for and kill dd, it's a substring in other process names
