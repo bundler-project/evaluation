@@ -222,10 +222,24 @@ def start_tcpprobe(config, sender):
 
     return tcpprobe_out
 
+def start_tcpdump(config, machines):
+    agenda.subtask("Start tcpdump")
+    inbox = machines['inbox']
+    outbox = machines['outbox']
+    inbox_pcap = os.path.join(config['iteration_dir'], 'inbox.pcap')
+    outbox_pcap = os.path.join(config['iteration_dir'], 'outbox.pcap')
+    inbox.run(f"tcpdump -n -s128 -w {inbox_pcap} portrange 5000-6000", sudo=True, background=True)
+    outbox.run(f"tcpdump -n -s128 -w {outbox_pcap} portrange 5000-6000", sudo=True, background=True)
+
+    config['iteration_outputs'].append((inbox, inbox_pcap))
+    config['iteration_outputs'].append((outbox, outbox_pcap))
+
+    return config
+
 def kill_leftover_procs(config, machines, verbose=False):
     agenda.subtask("Kill leftover experiment processes")
     for (name, conn) in set((m, machines[m]) for m in machines if m in ("sender", "inbox", "outbox", "receiver")):
-        proc_regex = "|".join(["inbox", "outbox", *config['ccp'].keys(), "iperf", "etgClient", "etgServer", "ccp_const"])
+        proc_regex = "|".join(["inbox", "outbox", *config['ccp'].keys(), "iperf", "tcpdump", "etgClient", "etgServer", "ccp_const"])
         conn.run(
             "pkill -9 \"({search})\"".format(
                 search=proc_regex

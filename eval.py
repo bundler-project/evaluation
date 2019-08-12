@@ -38,6 +38,8 @@ parser.add_argument('--skip-existing', action='store_true', dest='skip_existing'
         help="if supplied, if results already exist for a given experiment, that experiment will be skipped and results preserved, good for finishing an incomplete experiment")
 parser.add_argument('--tcpprobe', action='store_true', dest='tcpprobe',
         help="if supplied, run tcpprobe at the sender")
+parser.add_argument('--tcpdump', action='store_true', dest='tcpdump',
+        help="if supplied, run tcpdump at the inbox and outbox")
 parser.add_argument('--rows', type=str, help="rows to split graph upon", default='')
 parser.add_argument('--cols', type=str, help="cols to split graph upon", default='')
 parser.add_argument('--downsample', type=int, default=1, help="how much to downsample measurements")
@@ -302,6 +304,9 @@ if __name__ == "__main__":
         if config['args'].tcpprobe:
             #TODO figure out how to check for and kill dd, it's a substring in other process names
             tcpprobe_out = start_tcpprobe(config, machines['sender'])
+
+        if config['args'].tcpdump:
+            config = start_tcpdump(config, machines)
 
         config = topo.run_traffic(config, exp, bundle_traffic, cross_traffic)
 
