@@ -706,6 +706,12 @@ if __name__ == "__main__":
         total_elapsed += elapsed
         agenda.subtask("Ran for {} seconds".format(elapsed))
         kill_leftover_procs(config, conns)
+        agenda.subtask("Remove qdisc")
+        machines['inbox'].run(
+                "tc qdisc del dev {iface} root".format(
+                    iface=config['topology']['inbox']['ifaces'][1]['dev']
+                ), sudo=True
+        )
 
         agenda.subtask("collecting results")
         for (m, fname) in config['iteration_outputs']:
