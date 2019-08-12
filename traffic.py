@@ -35,7 +35,6 @@ class IperfTraffic(Traffic):
             report_interval=traffic.report_interval,
             length=traffic.length,
             num_flows=traffic.num_flows,
-            alg=traffic.alg,
             delay=traffic.start_delay
         )
 
@@ -54,6 +53,9 @@ class IperfTraffic(Traffic):
             return cmd + " > {}".format(iperf_out)
 
     def start_server(traffic, config, node, execute):
+        if int(traffic.port) == 8900 or int(traffic.port) == 8901:
+            agenda.subtask("Skipping server!")
+            return
         agenda.subtask("Start iperf server ({})".format(traffic))
         iperf_out = os.path.join(config['iteration_dir'], "iperf_server_{}.log".format(traffic.port))
         expect(
@@ -64,6 +66,7 @@ class IperfTraffic(Traffic):
                     report_interval=traffic.report_interval,
                     length=traffic.length,
                     num_flows=traffic.num_flows,
+                    alg=traffic.alg,
                 ),
                 background=True,
                 stdout=iperf_out,
