@@ -227,6 +227,13 @@ def setup_networking(machines, config):
         ),
         "Failed to set routing tables at outbox"
     )
+    expect(
+        machines['outbox'].run(
+            "sysctl net.ipv4.ip_forward=1",
+            sudo=True
+        ),
+        "Failed to set IP forwarding at outbox"
+    )
 
     agenda.task("Turn off TSO, GSO, and GRO")
     for node in ['sender', 'inbox', 'outbox', 'receiver']:
