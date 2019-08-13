@@ -278,7 +278,11 @@ if __name__ == "__main__":
         if config['args'].tcpdump:
             config = start_tcpdump(config, machines)
 
-        config = topo.run_traffic(config, exp, bundle_traffic, cross_traffic)
+        c = topo.run_traffic(config, exp, bundle_traffic, cross_traffic)
+        if c is None:
+            continue
+        else:
+            config = c
 
         elapsed = time.time() - start
         total_elapsed += elapsed
