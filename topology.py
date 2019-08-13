@@ -236,7 +236,7 @@ done
                     nonworkconserving={(1 if emulation_env.ecmp.nonworkconserving else 0)}"\
                     --uplink-queue-args="packets={buf_pkts}"'
             elif emulation_env.sfq:
-                # !!! 
+                # !!!
                 # NOTE hardcoded at 500 queues
                 # !!!
                 queue_args = f'--downlink-queue="akshayfq"\
@@ -277,7 +277,7 @@ class CloudlabTopo:
         config = bootstrap_cloudlab_topology(config, machines)
         self.config = config
 
-    def setup_routing(self):
+    def setup_routing(self, config):
         """
         sender --> inbox --> ( outbox | receiver )
 

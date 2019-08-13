@@ -176,7 +176,7 @@ def get_interfaces(config, machines):
 def init_repo(config, machines):
     agenda.section("Init cloudlab nodes")
     root = config['structure']['bundler_root']
-    clone = f'git clone --recurse-submodules -b cloudlab https://github.com/bundler-project/evaluation {root}'
+    clone = f'git clone --recurse-submodules https://github.com/bundler-project/evaluation {root}'
 
     for m in machines:
         if m == 'self':
