@@ -19,11 +19,11 @@ def read_config(args):
     bundler_root = config['structure']['bundler_root']
     config['box_root'] = os.path.join(bundler_root, "bundler")
     config['experiment_root'] = os.path.join(bundler_root, "experiments")
-    config['local_experiment_dir'] = "./experiments"
     config['distribution_dir'] = os.path.join(bundler_root, 'distributions')
     config['etg_client_path'] = os.path.join(config['structure']['bundler_root'], "empirical-traffic-gen/bin/etgClient")
     config['etg_server_path'] = os.path.join(config['structure']['bundler_root'], "empirical-traffic-gen/run-servers.py")
     config['experiment_dir'] = os.path.join(config['experiment_root'], config['experiment_name'])
+    config['local_experiment_dir'] = os.path.join("./experiments", config['experiment_name'])
     config['ccp_dir'] = os.path.join(bundler_root, 'ccp')
     return config
 
