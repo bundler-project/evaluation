@@ -35,6 +35,8 @@ def outbox_output_location(config):
     return os.path.join(config['iteration_dir'], 'outbox.log')
 
 class MahimahiTopo:
+    MahimahiConfig = namedtuple('MahimahiConfig', ['rtt', 'rate', 'ecmp', 'sfq', 'num_bdp'])
+
     def __init__(self, config):
         conns, machines = create_ssh_connections(config)
         self.conns = conns
@@ -102,17 +104,17 @@ class MahimahiTopo:
             "Failed to set routing tables at outbox"
         )
 
-	expect(
-	    machines['outbox'].run(
-		"sysctl net.ipv4.ip_forward=1",
-		sudo=True
-	    ),
-	    "Failed to set IP forwarding at outbox"
-	)
+        expect(
+            machines['outbox'].run(
+                "sysctl net.ipv4.ip_forward=1",
+                sudo=True
+            ),
+            "Failed to set IP forwarding at outbox"
+        )
 
-    def run_traffic(self, exp, config, bundle_traffic, cross_traffic):
+    def run_traffic(self, config, exp, bundle_traffic, cross_traffic):
         machines = self.machines
-        mahimahiCfg = MahimahiConfig(
+        mahimahiCfg = MahimahiTopo.MahimahiConfig(
             rate=exp.rate,
             rtt=exp.rtt,
             num_bdp=exp.bdp,
@@ -200,17 +202,17 @@ done
                     nonworkconserving={(1 if emulation_env.ecmp.nonworkconserving else 0)}"\
                     --uplink-queue-args="packets={buf_pkts}"'
             elif emulation_env.sfq:
-                queue_args = '--downlink-queue="akshayfq"\
-                    --downlink-queue-args="queues={queues},packets={buf}"\
+                # !!! 
+                # NOTE hardcoded at 500 queues
+                # !!!
+                queue_args = f'--downlink-queue="akshayfq"\
+                    --downlink-queue-args="queues={500},packets={buf_pkts}"\
                     --uplink-queue="droptail"\
-                    --uplink-queue-args="packets={buf}"'.format(
-                    queues=500, # TODO arbitrary for now
-                    buf=buf_pkts,
-                )
+                    --uplink-queue-args="packets={buf_pkts}"'
             else:
                 queue_args = f'--downlink-queue="droptail"\
                     --uplink-queue="droptail"\
-                    --downlink-queue-args="packets={buf}"\
+                    --downlink-queue-args="packets={buf_pkts}"\
                     --uplink-queue-args="packets={buf_pkts}"'
         if config['args'].dry_run:
             print("cat mm_inner.sh\n{}".format(mm_inner.getvalue()))

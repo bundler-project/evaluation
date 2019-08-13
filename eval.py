@@ -153,8 +153,6 @@ def prepare_iteration_dir(config, conns):
 
     subprocess.call(f"mkdir -p {config['local_iteration_dir']}", shell=True)
 
-MahimahiConfig = namedtuple('MahimahiConfig', ['rtt', 'rate', 'ecmp', 'sfq', 'num_bdp'])
-
 def start_interacting(machines):
     warn("Starting interactive mode", exit=False)
     for name, m in machines.items():
@@ -187,7 +185,7 @@ if __name__ == "__main__":
     else:
         topo = MahimahiTopo(config)
 
-    topo.setup_routing()
+    topo.setup_routing(config)
     machines = topo.machines
     conns = topo.conns
 
