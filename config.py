@@ -23,7 +23,6 @@ def read_config(args):
     config['distribution_dir'] = os.path.join(bundler_root, 'distributions')
     config['etg_client_path'] = os.path.join(config['structure']['bundler_root'], "empirical-traffic-gen/bin/etgClient")
     config['etg_server_path'] = os.path.join(config['structure']['bundler_root'], "empirical-traffic-gen/run-servers.py")
-    config['parameters']['bg_port_end'] = config['parameters']['bg_port_start'] + 1000
     config['experiment_dir'] = os.path.join(config['experiment_root'], config['experiment_name'])
     config['ccp_dir'] = os.path.join(bundler_root, 'ccp')
     return config
@@ -60,8 +59,9 @@ def check_config(config):
         v = config['sysctl'][k]
         assert type(v) == str, "key names with dots must be enclosed in quotes (sysctl)"
 
-    assert 'initial_sample_rate' in config['parameters'], "parameters must include initial_sample_rate"
-    assert 'bg_port_start' in config['parameters'], "parameters must include bg_port_start"
+    parameters = ['initial_sample_rate', 'bg_port_start', 'bg_port_end', 'qdisc_buf_size']
+    for param in parameters:
+        assert param in config['parameters'], "parameters must include {}".format(param)
 
     structure_fields = [
         ('bundler_root', 'root directory for all experiments and code'),
