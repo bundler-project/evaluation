@@ -167,7 +167,7 @@ class CBRTraffic(Traffic):
         return iperf_out
 
 def create_etg_config(node, global_config, f, traffic):
-    port_start = int(global_config['parameters']['bg_port_start'])
+    port_start = traffic.start_port
     num_conns = int(traffic.num_conns)
     num_backlogged = int(traffic.num_backlogged)
     for p in range(port_start, port_start + num_conns):
@@ -181,7 +181,7 @@ def create_etg_config(node, global_config, f, traffic):
     f.write("num_reqs {}\n".format(traffic.num_reqs))
 
 class PoissonTraffic(Traffic):
-    trafficType = namedtuple('PoissonTraffic', ['num_conns', 'num_backlogged', 'num_reqs', 'distribution', 'fanout', 'load', 'congalg', "seed", 'start_delay'])
+    trafficType = namedtuple('PoissonTraffic', ['start_port', 'num_conns', 'num_backlogged', 'num_reqs', 'distribution', 'fanout', 'load', 'congalg', "seed", 'start_delay'])
     def __init__(self, *args, **kwargs):
         self.traffic = PoissonTraffic.trafficType(**kwargs)
 
@@ -192,8 +192,8 @@ class PoissonTraffic(Traffic):
         if config['args'].verbose:
             agenda.subtask("Create ETG config file")
 
-        if traffic.num_conns > 1000:
-            fatal_warn("Requested poisson traffic with more than 1000 connections, which would be outside of outbox portrange ({}-{})".format(
+        if traffic.start_port < config['parameters']['bg_port_start'] or traffic.start_port + traffic.num_conns > config['parameters']['bg_port_end']:
+            fatal_warn("Requested poisson traffic would be outside of outbox portrange ({}-{})".format(
                 config['parameters']['bg_port_start'], config['parameters']['bg_port_end']
             ))
 
@@ -247,7 +247,7 @@ class PoissonTraffic(Traffic):
             node.run(
                 "{sh} {start} {conns} {alg}".format(
                     sh=config['etg_server_path'],
-                    start=config['parameters']['bg_port_start'],
+                    start=traffic.start_port,
                     conns=traffic.num_conns,
                     alg=traffic.congalg
                 ),
@@ -296,6 +296,7 @@ def create_traffic_config(traffic, exp):
             )
         elif t['source'] == 'poisson':
             yield PoissonTraffic(
+                start_port=t['start_port'],
                 num_conns=t['conns'],
                 num_backlogged=t['backlogged'],
                 num_reqs=t['reqs'],

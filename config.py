@@ -96,6 +96,7 @@ def check_config(config):
                     assert t['length'], "{} missing 'length' (int)".format(traffic_type)
                 if t['source'] == 'poisson':
                     assert t['conns'], "{} missing 'conns' (int)".format(traffic_type)
+                    assert t['start_port'], "{} missing 'start_port' (int)".format(traffic_type)
                     assert t['reqs'], "{} missing 'reqs' (int)".format(traffic_type)
                     assert t['dist'], "{} missing 'dist' (str)".format(traffic_type)
                     assert t['load'], "{} missing 'load' (str)".format(traffic_type)
