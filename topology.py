@@ -44,6 +44,7 @@ class MahimahiTopo:
         conns, machines = create_ssh_connections(config)
         self.conns = conns
         self.machines = machines
+        self.config = config
 
     def setup_routing(self, config):
         """
