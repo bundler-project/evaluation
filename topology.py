@@ -184,7 +184,7 @@ class MahimahiTopo:
 
     def start_outbox(self, config):
         outbox_output = outbox_output_location(config)
-        outbox_cmd = "sudo {path} --filter \"{pcap_filter}\" --iface {iface} --inbox {inbox_addr} --sample_rate {sample_rate} --no-ethernet".format(
+        outbox_cmd = "sudo {path} --filter \"{pcap_filter}\" --iface {iface} --inbox {inbox_addr} --sample_rate {sample_rate} --no_ethernet".format(
             path=get_outbox_binary(config),
             pcap_filter="src portrange {}-{}".format(config['parameters']['bg_port_start'], config['parameters']['bg_port_end']),
             iface="ingress",
