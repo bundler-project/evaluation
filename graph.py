@@ -119,7 +119,8 @@ df_fct$Duration <- df_fct$Duration.usec. / 1e6
 bw <- 12e6 # TODO make this configurable
 df_fct$ofct <- (df_fct$Size / bw) + 0.05
 df_fct$NormFct <- df_fct$Duration / df_fct$ofct
-fct_plt <- ggplot(df_fct, aes(x=NormFct, colour=alg)) + stat_ecdf() + scale_x_log10()
+df_fct$scheme <- paste(df_fct$sch, "_", df_fct$alg, sep="")
+fct_plt <- ggplot(df_fct, aes(x=NormFct, colour=scheme)) + stat_ecdf() + scale_x_log10()
 fct_plt
 ```""".format(
             csv = fct_path,
@@ -172,7 +173,6 @@ suppressWarnings(suppressMessages(library(tidyr)))
         config = config,
         grid_str = grid_str,
         results = results,
-        commits = commits,
         nimbus_plots = nimbus_plots,
         fct_plots = fct_plots,
         mm_plots = mm_plots_str,
