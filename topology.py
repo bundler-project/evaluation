@@ -263,7 +263,8 @@ done
             "Failed to start mahimahi shell on receiver"
         )
         config['iteration_outputs'].append((outbox, os.path.join(config['iteration_dir'], 'downlink.log')))
-        config['iteration_outputs'].append((outbox, outbox_output_location(config)))
+        if not nobundler:
+            config['iteration_outputs'].append((outbox, outbox_output_location(config)))
         return config
 
 class CloudlabTopo:
