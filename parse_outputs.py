@@ -87,22 +87,28 @@ def parse_ccp_logs(dirname, sample_rate, replot):
 
     for exp in g:
         exp_root = "/".join(exp.split("/")[:-1])
-        with open(exp) as f, open(os.path.join(exp_root, "ccp.parsed"), 'w') as out, open(os.path.join(exp_root, "ccp_switch.parsed"), 'w') as out_switch:
-            matches = pattern.search(exp)
-            if matches is not None and 'nimbus' in exp:
-                print(exp)
+        old_header = None
+        matches = pattern.search(exp)
+        if matches is not None and 'nimbus' in exp:
+            print(exp)
+            with open(exp) as f, open(os.path.join(exp_root, "ccp.parsed"), 'w') as out, open(os.path.join(exp_root, "ccp_switch.parsed"), 'w') as out_switch:
                 sch, bw, delay, args, bg, cross, seed, alg = matches.group('sch', 'bw', 'delay', 'args', 'bg', 'cross', 'seed', 'alg')
                 args = [a.split("=") for a in args.split(".")] if args else []
                 exp_header = f"sch,alg,rate,rtt,{','.join(a[0] for a in args)},bundle,cross,seed"
                 header = exp_header + "," + log_header
+                if old_header and old_header != header:
+                    exit("headers do not align")
+                old_header = header
                 out.write(header + "\n")
                 prepend = f"{sch},{alg},{bw},{delay},{','.join(a[1] for a in args)},{bg},{cross},{seed}"
                 parse_nimbus_log(f, out, out_switch, header, prepend, fields, sample_rate)
-            else:
-                print(f"skipping {exp}, no regex match")
+        else:
+            print(f"skipping {exp}, no regex match")
 
     global_out_fname = os.path.join(dirname, 'ccp.parsed')
     subprocess.call(f"rm -f {global_out_fname}", shell=True)
+    with open(global_out_fname, 'w') as f:
+        f.write(header + "\n")
     g = glob.glob(dirname + "/**/ccp.parsed", recursive=True)
     tail = 1
     for exp in g:
