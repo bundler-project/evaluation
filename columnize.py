@@ -9,7 +9,11 @@ if len(sys.argv) > 1:
 def flds(line):
     for f in line:
         sp = f.split(delim)
-        yield sp[0], sp[1].split(",")[0]
+        try:
+            yield sp[0], sp[1].split(",")[0]
+        except:
+            print('line', line, sp, file=sys.stderr)
+            raise Exception()
 
 head = None
 for line in sys.stdin:

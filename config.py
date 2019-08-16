@@ -4,6 +4,7 @@ import itertools
 import random
 import toml
 import os
+from util import *
 
 def read_config(args):
     agenda.task("Reading config file: {}".format(args.config))

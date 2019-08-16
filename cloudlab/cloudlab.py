@@ -95,7 +95,7 @@ def launch(driver):
 
     time.sleep(2)
     driver.find_element_by_id("experiment_duration").clear()
-    driver.find_element_by_id("experiment_duration").send_keys("8")
+    driver.find_element_by_id("experiment_duration").send_keys("16")
 
     agenda.subprompt("Press [Enter] to launch")
     input()
