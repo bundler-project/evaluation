@@ -107,8 +107,6 @@ def parse_ccp_logs(dirname, sample_rate, replot):
 
     global_out_fname = os.path.join(dirname, 'ccp.parsed')
     subprocess.call(f"rm -f {global_out_fname}", shell=True)
-    with open(global_out_fname, 'w') as f:
-        f.write(header + "\n")
     g = glob.glob(dirname + "/**/ccp.parsed", recursive=True)
     tail = 1
     for exp in g:
@@ -143,8 +141,12 @@ def parse_etg_logs(dirname, replot):
     outf = os.path.join(dirname, "fcts.data")
     if not replot and os.path.isfile(outf):
         return
+    if replot and os.path.isfile(outf):
+        os.remove(outf)
     g = glob.glob(dirname + "/**/*reqs.out", recursive=True)
     some = None
+    cross_traffic_pattern = "0:60=empty1,60:120=iperfc1,120:150=empty2,150:210=cbr32,210:250=empty3"
+    print_head = True
     for exp in g:
         print(exp)
         some = True
@@ -152,10 +154,14 @@ def parse_etg_logs(dirname, replot):
         exp_root = os.path.dirname(exp)
         exp_root = exp_root.split(dirname)[-1]
         _, setup, alg, traffic, seed = exp_root.split("/")
+        alg_sp = alg.split(".")
+        if not alg_sp:
+            alg = alg_sp[0]
         sch, bw, rtt = setup.split("_")
-        subprocess.check_output(f"awk '{{print \"sch:{sch}, bw:{bw}, rtt:{rtt}, alg:{alg}, traffic:{traffic}, seed:{seed} \"$0}}' {exp} >> tmp", shell=True)
+        subprocess.check_output(f"awk '{{print \"sch:{sch}, bw:{bw}, rtt:{rtt}, alg:{alg}, traffic:{traffic}, seed:{seed} \"$0}}' {exp} | python3 columnize.py \"{cross_traffic_pattern}\" {print_head}>> tmp", shell=True)
+        print_head = False
     if some:
-        subprocess.call(f"python3 columnize.py < tmp > {outf} && rm tmp", shell=True)
+        subprocess.call(f"mv tmp {outf}", shell=True)
 
 def parse_outputs(root_path, replot=False, interact=False, graph_kwargs={}):
     experiment_root = os.path.abspath(os.path.expanduser(root_path))
@@ -166,7 +172,7 @@ def parse_outputs(root_path, replot=False, interact=False, graph_kwargs={}):
         sample_rate = 1
 
     global_out_fname, num_ccp = parse_ccp_logs(experiment_root, sample_rate, replot)
-    #parse_mahimahi_logs(experiment_root, sample_rate, replot)
+    parse_mahimahi_logs(experiment_root, sample_rate, replot)
     parse_etg_logs(experiment_root, replot)
 
     write_rmd(experiment_root, global_out_fname, num_ccp, **graph_kwargs)
