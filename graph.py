@@ -82,6 +82,7 @@ plt_m_{i} <- ggplot(df_m_{i}, aes(x=t, y=value, color=measurement)) +
             nimbus_fig_height = len(g) * 1
         else:
             nimbus_fig_height = 30
+        nimbus_fig_height = max(nimbus_fig_height, 15)
 
         nimbus_plots = """
 #### Nimbus
