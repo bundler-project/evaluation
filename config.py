@@ -60,7 +60,7 @@ def check_config(config):
         v = config['sysctl'][k]
         assert type(v) == str, "key names with dots must be enclosed in quotes (sysctl)"
 
-    parameters = ['initial_sample_rate', 'bg_port_start', 'bg_port_end', 'qdisc_buf_size']
+    parameters = ['initial_sample_rate', 'bg_port_start', 'bg_port_end', 'qdisc_buf_size', 'fifo_uplink', 'fifo_downlink']
     for param in parameters:
         assert param in config['parameters'], "parameters must include {}".format(param)
 

@@ -244,10 +244,22 @@ done
                     --uplink-queue="droptail"\
                     --uplink-queue-args="packets={buf_pkts}"'
             else:
-                queue_args = f'--downlink-queue="droptail"\
-                    --uplink-queue="droptail"\
-                    --downlink-queue-args="packets={buf_pkts}"\
-                    --uplink-queue-args="packets={buf_pkts}"'
+                downlink = config['parameters']['fifo_downlink']
+                dlq = downlink['queue']
+                if 'args' in dlq:
+                    dlq_args = downlink['args']
+                else:
+                    dlq_args = f"packets={buf_pkts}"
+                uplink = config['parameters']['fifo_uplink']
+                ulq = uplink['queue']
+                if 'args' in ulq:
+                    ulq_args = uplink['args']
+                else:
+                    ulq_args = f"packets={buf_pkts}"
+                queue_args = f'--downlink-queue="{dlq}"\
+                    --uplink-queue="{ulq}"\
+                    --downlink-queue-args="{dlq_args}"\
+                    --uplink-queue-args="{ulq_args}"'
         if config['args'].dry_run:
             print("cat mm_inner.sh\n{}".format(mm_inner.getvalue()))
         expect(
