@@ -1,4 +1,5 @@
 use failure::{format_err, Error};
+use regex::Regex;
 use rusoto_core::Region;
 use std::collections::HashMap;
 use structopt::StructOpt;
@@ -18,27 +19,57 @@ struct Opt {
     recv_region: Region,
 }
 
+lazy_static::lazy_static! {
+    static ref IFACE_REGEX: Regex = Regex::new(r"[0-9]+:\s+([a-z]+[0-9]+)\s+inet").unwrap();
+}
+
+fn iface_name(ip_addr_out: (String, String)) -> Result<String, Error> {
+    ip_addr_out
+        .0
+        .lines()
+        .filter_map(|l| Some(IFACE_REGEX.captures(l)?.get(1)?.as_str().to_string()))
+        .filter(|l| match l.as_str() {
+            "lo" => false,
+            _ => true,
+        })
+        .next()
+        .ok_or_else(|| format_err!("No matching interfaces"))
+}
+
 fn get_iface_name(node: &Session) -> Result<String, Error> {
     node.cmd("bash -c \"ip -o addr | awk '{print $2}'\"")
-        .and_then(|(out, _)| {
-            out.lines()
-                .filter(|l| match l {
-                    &"lo" => false,
-                    _ => true,
-                })
-                .map(|s| s.to_string())
-                .next()
-                .ok_or_else(|| format_err!(""))
-        })
+        .and_then(iface_name)
 }
 
 fn install_basic_packages(ssh: &Session) -> Result<(), Error> {
-    ssh.cmd("sudo apt update").map(|(_, _)| ())?;
-    ssh.cmd("sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y build-essential git automake autoconf libtool")
+    let mut count = 0;
+    loop {
+        count += 1;
+        let res = {
+            ssh.cmd("sudo apt update")
+                .map(|(_, _)| ())
+                .map_err(|e| e.context("apt update failed"))?;
+            ssh.cmd("sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y build-essential git automake autoconf libtool")
         .map(|(_, _)| ())
+        .map_err(|e| e.context("apt install failed"))?;
+            Ok(())
+        };
+
+        if let Ok(_) = res {
+            return res;
+        }
+
+        if count > 5 {
+            return res;
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
 }
 
 fn get_tools(ssh: &Session) -> Result<(), Error> {
+    ssh.cmd("sudo sysctl -w net.ipv4.ip_forward=1")
+        .map(|(_, _)| ())?;
     ssh.cmd("git clone --recursive https://github.com/bundler-project/tools")
         .map(|(_, _)| ())?;
 
@@ -75,7 +106,7 @@ fn main() -> Result<(), Error> {
     b.set_max_duration(1);
     b.run(|vms: HashMap<String, Machine>| {
         let sender_ip = &vms.get("sender").expect("get sender").public_ip;
-        let receiver_ip = &vms.get("sender").expect("get sender").public_ip;
+        let receiver_ip = &vms.get("receiver").expect("get receiver").public_ip;
 
         let sender = vms
             .get("sender")
@@ -92,51 +123,62 @@ fn main() -> Result<(), Error> {
         let sender_iface = get_iface_name(sender)?;
         let receiver_iface = get_iface_name(recevr)?;
 
-        // don't bother trying to actually do anything, just wait for now
-        println!(
-            "success, ready: {} =>{} ; {} => {}",
-            sender_ip, sender_iface, receiver_ip, receiver_iface
-        );
-        std::thread::sleep(std::time::Duration::from_secs(120));
-        //// start outbox
-        //recevr.cmd(&format!("cd ~/tools/bundler && sudo screen -d -m bash -c \"./target/debug/outbox --filter=\\\"src portrange 5000-6000\\\" --iface={} --inbox {}:28316 --sample-rate=64",
-        //        receiver_iface,
-        //        sender_ip,
-        //    ))
-        //    .map(|(out, err)| {
-        //        println!("outbox_out: {}", out);
-        //        println!("errbox_err: {}", err);
-        //    })?;
+        // start outbox
+        recevr.cmd(&format!("cd ~/tools/bundler && sudo screen -d -m bash -c \"./target/debug/outbox --filter=\\\"src portrange 5000-6000\\\" --iface={} --inbox {}:28316 --sample-rate=64 > ~/outbox.out 2> ~/outbox.out\"",
+                receiver_iface,
+                sender_ip,
+            ))
+            .map(|(out, err)| {
+                println!("outbox_out: {}", out);
+                println!("errbox_err: {}", err);
+            })?;
 
-        //// start iperf receiver
-        //recevr.cmd("cd ~/tools/iperf && screen -d -m bash -c \"./src/iperf -s -p 5001\"").map(|_| ())?;
+        // start iperf receiver
+        recevr.cmd("cd ~/tools/iperf && screen -d -m bash -c \"./src/iperf -s -p 5001 > ~/iperf_server.out 2> ~/iperf_server.out\"").map(|_| ())?;
 
-        //// start inbox
-        //sender
-        //    .cmd(&format!("cd ~/tools/bundler && sudo screen -d -m bash -c \"./target/debug/inbox --iface={} --port 28316 --sample_rate=128 --qtype={} --buffer={}\"",
-        //                  sender_iface,
-        //                  opt.inbox_qtype,
-        //                  opt.inbox_qlen,
-        //                  ))
-        //    .map(|(out, err)| {
-        //        println!("inbox_out: {}", out);
-        //        println!("inbox_err: {}", err);
-        //    })?;
+        // start inbox
+        sender
+            .cmd(&format!("cd ~/tools/bundler && sudo screen -d -m bash -c \"./target/debug/inbox --iface={} --port 28316 --sample_rate=128 --qtype={} --buffer={} > ~/inbox.out 2> ~/inbox.out\"",
+                          sender_iface,
+                          opt.inbox_qtype,
+                          opt.inbox_qlen,
+                          ))
+            .map(|(out, err)| {
+                println!("inbox_out: {}", out);
+                println!("inbox_err: {}", err);
+            })?;
 
-        //// start nimbus
-        //sender.cmd(&format!("cd ~/tools/nimbus && sudo ./target/debug/nimbus --ipc=unix --use_switching=true --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=XTCP --bundler_qlen_alpha=100 --bundler-qlen-beta=10000 --bundler_qlen_target=100")).map(|(out, err)| {
-        //    println!("nimbus_out: {}", out);
-        //    println!("nimbus_err: {}", err);
-        //})?;
+        // start nimbus
+        sender.cmd(&format!("cd ~/tools/nimbus && sudo screen -d -m bash -c \"./target/debug/nimbus --ipc=unix --use_switching=true --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=XTCP --bundler_qlen_alpha=100 --bundler-qlen-beta=10000 --bundler_qlen_target=100 > ~/ccp.out 2> ccp.out\"")).map(|(out, err)| {
+            println!("nimbus_out: {}", out);
+            println!("nimbus_err: {}", err);
+        })?;
 
-        //// start iperf sender inside mm-delay 0
-        //sender.cmd(&format!("cd ~/tools/iperf && ./src/iperf -c {} -p 5001 -t 30 -i 1", receiver_ip)).map(|(out, err)| {
-        //    println!("iperf sender_out: {}", out);
-        //    println!("iperf sender_err: {}", err);
-        //})?;
+        // start iperf sender inside mm-delay 0
+        let iperf_cmd = format!("cd ~/tools/iperf && mm-delay 0 ./src/iperf -c {} -p 5001 -t 30 -i 1", receiver_ip);
+        sender.cmd(&iperf_cmd).and_then(|(out, err)| {
+            println!("iperf sender_out: {}", out);
+            println!("iperf sender_err: {}", err);
+            if err.contains("connect failed") {
+                println!("iperf cmd: {:?}", iperf_cmd);
+                Err(failure::format_err!("iperf failed: {}", err).context(iperf_cmd).into())
+            } else {
+                Ok(())
+            }
+        })?;
 
         Ok(())
     })?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn iface_name() {
+        let out = r"1: lo    inet 127.0.0.1/8 scope host lo\       valid_lft forever preferred_lft forever
+2: em1    inet 18.26.5.2/23 brd 18.26.5.255 scope global em1\       valid_lft forever preferred_lft forever".to_string();
+        assert_eq!(super::iface_name((out, String::new())).unwrap(), "em1");
+    }
 }

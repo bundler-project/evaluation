@@ -11,3 +11,5 @@ tsunami = {path = "../../tsunami"}
 structopt = "0.2"
 rusoto_core = "0.40"
 failure = "0.1"
+regex = "1"
+lazy_static = "1"
