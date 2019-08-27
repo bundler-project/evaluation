@@ -2,6 +2,8 @@ use failure::{format_err, Error};
 use regex::Regex;
 use rusoto_core::Region;
 use std::collections::HashMap;
+use std::io::prelude::*;
+use std::path::Path;
 use structopt::StructOpt;
 use tsunami::{Machine, MachineSetup, Session, TsunamiBuilder};
 
@@ -76,6 +78,18 @@ fn get_tools(ssh: &Session) -> Result<(), Error> {
     ssh.cmd("make -C tools").map(|(_, _)| ())
 }
 
+fn get_file(ssh: &Session, remote_path: &Path, local_path: &Path) -> Result<(), Error> {
+    ssh.scp_recv(std::path::Path::new(remote_path))
+        .map_err(Error::from)
+        .and_then(|(mut channel, _)| {
+            let mut out = std::fs::File::create(local_path)?;
+            std::io::copy(&mut channel, &mut out)?;
+            Ok(())
+        })
+        .map_err(|e| e.context(format!("scp {:?}", remote_path)))?;
+    Ok(())
+}
+
 fn main() -> Result<(), Error> {
     let opt = Opt::from_args();
 
@@ -104,7 +118,7 @@ fn main() -> Result<(), Error> {
     b.add("sender".into(), m0);
     b.add("receiver".into(), m1);
     b.set_max_duration(1);
-    b.run(|vms: HashMap<String, Machine>| {
+    b.run(true, |vms: HashMap<String, Machine>| {
         let sender_ip = &vms.get("sender").expect("get sender").public_ip;
         let receiver_ip = &vms.get("receiver").expect("get receiver").public_ip;
 
@@ -124,14 +138,11 @@ fn main() -> Result<(), Error> {
         let receiver_iface = get_iface_name(recevr)?;
 
         // start outbox
-        recevr.cmd(&format!("cd ~/tools/bundler && sudo screen -d -m bash -c \"./target/debug/outbox --filter=\\\"src portrange 5000-6000\\\" --iface={} --inbox {}:28316 --sample-rate=64 > ~/outbox.out 2> ~/outbox.out\"",
+        recevr.cmd(&format!("cd ~/tools/bundler && sudo screen -d -m bash -c \"./target/debug/outbox --filter=\\\"src portrange 5000-6000\\\" --iface={} --inbox {}:28316 --sample_rate=64 > ~/outbox.out 2> ~/outbox.out\"",
                 receiver_iface,
                 sender_ip,
             ))
-            .map(|(out, err)| {
-                println!("outbox_out: {}", out);
-                println!("errbox_err: {}", err);
-            })?;
+            .map(|(_, _)| ())?;
 
         // start iperf receiver
         recevr.cmd("cd ~/tools/iperf && screen -d -m bash -c \"./src/iperf -s -p 5001 > ~/iperf_server.out 2> ~/iperf_server.out\"").map(|_| ())?;
@@ -143,16 +154,10 @@ fn main() -> Result<(), Error> {
                           opt.inbox_qtype,
                           opt.inbox_qlen,
                           ))
-            .map(|(out, err)| {
-                println!("inbox_out: {}", out);
-                println!("inbox_err: {}", err);
-            })?;
+            .map(|(_,_)| ())?;
 
         // start nimbus
-        sender.cmd(&format!("cd ~/tools/nimbus && sudo screen -d -m bash -c \"./target/debug/nimbus --ipc=unix --use_switching=true --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=XTCP --bundler_qlen_alpha=100 --bundler-qlen-beta=10000 --bundler_qlen_target=100 > ~/ccp.out 2> ccp.out\"")).map(|(out, err)| {
-            println!("nimbus_out: {}", out);
-            println!("nimbus_err: {}", err);
-        })?;
+        sender.cmd(&format!("cd ~/tools/nimbus && sudo screen -d -m bash -c \"./target/debug/nimbus --ipc=unix --use_switching=true --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=XTCP --bundler_qlen_alpha=100 --bundler_qlen_beta=10000 --bundler_qlen=100 > ~/ccp.out 2> ccp.out\"")).map(|(_, _)| ())?;
 
         // start iperf sender inside mm-delay 0
         let iperf_cmd = format!("cd ~/tools/iperf && mm-delay 0 ./src/iperf -c {} -p 5001 -t 30 -i 1", receiver_ip);
@@ -163,9 +168,20 @@ fn main() -> Result<(), Error> {
                 println!("iperf cmd: {:?}", iperf_cmd);
                 Err(failure::format_err!("iperf failed: {}", err).context(iperf_cmd).into())
             } else {
+                let mut iperf_out = std::fs::File::create("./iperf_client.out")?;
+                iperf_out.write_all(out.as_bytes())?;
                 Ok(())
             }
         })?;
+
+        // wait for logs to flush
+        std::thread::sleep(std::time::Duration::from_secs(5));
+
+        // copy log files back
+        get_file(sender, Path::new("/home/ubuntu/ccp.out"), Path::new("./ccp.log"))?;
+        get_file(sender, Path::new("/home/ubuntu/inbox.out"), Path::new("./inbox.log"))?;
+        get_file(recevr, Path::new("/home/ubuntu/outbox.out"), Path::new("./outbox.log"))?;
+        get_file(recevr, Path::new("/home/ubuntu/iperf_server.out"), Path::new("./iperf_server.log"))?;
 
         Ok(())
     })?;
