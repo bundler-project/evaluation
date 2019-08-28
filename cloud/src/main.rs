@@ -19,6 +19,9 @@ struct Opt {
 
     #[structopt(short = "r")]
     recv_region: Region,
+
+    #[structopt(long = "pause")]
+    pause: bool,
 }
 
 lazy_static::lazy_static! {
@@ -59,9 +62,11 @@ fn install_basic_packages(ssh: &Session) -> Result<(), Error> {
 
         if let Ok(_) = res {
             return res;
+        } else {
+            println!("apt failed: {:?}", res);
         }
 
-        if count > 5 {
+        if count > 15 {
             return res;
         }
 
@@ -72,7 +77,13 @@ fn install_basic_packages(ssh: &Session) -> Result<(), Error> {
 fn get_tools(ssh: &Session) -> Result<(), Error> {
     ssh.cmd("sudo sysctl -w net.ipv4.ip_forward=1")
         .map(|(_, _)| ())?;
+    ssh.cmd("sudo sysctl -w net.ipv4.tcp_wmem=\"4096000 12582912 12582912\"")
+        .map(|(_, _)| ())?;
+    ssh.cmd("sudo sysctl -w net.ipv4.tcp_rmem=\"4096000 12582912 12582912\"")
+        .map(|(_, _)| ())?;
     ssh.cmd("git clone --recursive https://github.com/bundler-project/tools")
+        .map(|(_, _)| ())?;
+    ssh.cmd("cd ~/tools/bundler && git checkout no_dst_ip")
         .map(|(_, _)| ())?;
 
     ssh.cmd("make -C tools").map(|(_, _)| ())
@@ -111,14 +122,13 @@ fn main() -> Result<(), Error> {
         .setup(|ssh| {
             install_basic_packages(ssh).map_err(|e| e.context("m1 apt install failed"))?;
             println!("m1 finished apt install");
-
             get_tools(ssh)
         });
 
     b.add("sender".into(), m0);
     b.add("receiver".into(), m1);
     b.set_max_duration(1);
-    b.run(true, |vms: HashMap<String, Machine>| {
+    b.run(opt.pause, |vms: HashMap<String, Machine>| {
         let sender_ip = &vms.get("sender").expect("get sender").public_ip;
         let receiver_ip = &vms.get("receiver").expect("get receiver").public_ip;
 
@@ -138,7 +148,7 @@ fn main() -> Result<(), Error> {
         let receiver_iface = get_iface_name(recevr)?;
 
         // start outbox
-        recevr.cmd(&format!("cd ~/tools/bundler && sudo screen -d -m bash -c \"./target/debug/outbox --filter=\\\"src portrange 5000-6000\\\" --iface={} --inbox {}:28316 --sample_rate=64 > ~/outbox.out 2> ~/outbox.out\"",
+        recevr.cmd(&format!("cd ~/tools/bundler && sudo screen -d -m bash -c \"./target/debug/outbox --filter=\\\"dst portrange 5000-6000\\\" --iface={} --inbox {}:28316 --sample_rate=64 > ~/outbox.out 2> ~/outbox.out\"",
                 receiver_iface,
                 sender_ip,
             ))
@@ -150,17 +160,20 @@ fn main() -> Result<(), Error> {
         // start inbox
         sender
             .cmd(&format!("cd ~/tools/bundler && sudo screen -d -m bash -c \"./target/debug/inbox --iface={} --port 28316 --sample_rate=128 --qtype={} --buffer={} > ~/inbox.out 2> ~/inbox.out\"",
-                          sender_iface,
-                          opt.inbox_qtype,
-                          opt.inbox_qlen,
-                          ))
+                sender_iface,
+                opt.inbox_qtype,
+                opt.inbox_qlen,
+            ))
             .map(|(_,_)| ())?;
 
+        // wait for inbox to get ready
+        std::thread::sleep(std::time::Duration::from_secs(5));
+
         // start nimbus
-        sender.cmd(&format!("cd ~/tools/nimbus && sudo screen -d -m bash -c \"./target/debug/nimbus --ipc=unix --use_switching=true --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=XTCP --bundler_qlen_alpha=100 --bundler_qlen_beta=10000 --bundler_qlen=100 > ~/ccp.out 2> ccp.out\"")).map(|(_, _)| ())?;
+        sender.cmd(&format!("cd ~/tools/nimbus && sudo screen -d -m bash -c \"./target/debug/nimbus --ipc=unix --use_switching=true --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=XTCP --bundler_qlen_alpha=100 --bundler_qlen_beta=10000 --bundler_qlen=100 > ~/ccp.out 2> ~/ccp.out\"")).map(|(_, _)| ())?;
 
         // start iperf sender inside mm-delay 0
-        let iperf_cmd = format!("cd ~/tools/iperf && mm-delay 0 ./src/iperf -c {} -p 5001 -t 30 -i 1", receiver_ip);
+        let iperf_cmd = format!("cd ~/tools/iperf && mm-delay 0 ./src/iperf -c {} -p 5001 -t 60 -i 1 -P 10", receiver_ip);
         sender.cmd(&iperf_cmd).and_then(|(out, err)| {
             println!("iperf sender_out: {}", out);
             println!("iperf sender_err: {}", err);
@@ -168,7 +181,7 @@ fn main() -> Result<(), Error> {
                 println!("iperf cmd: {:?}", iperf_cmd);
                 Err(failure::format_err!("iperf failed: {}", err).context(iperf_cmd).into())
             } else {
-                let mut iperf_out = std::fs::File::create("./iperf_client.out")?;
+                let mut iperf_out = std::fs::File::create("./iperf_client.log")?;
                 iperf_out.write_all(out.as_bytes())?;
                 Ok(())
             }
