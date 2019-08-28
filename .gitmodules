@@ -13,3 +13,6 @@
 [submodule "mahimahi"]
 	path = mahimahi
 	url = https://github.com/fcangialosi/mahimahi
+[submodule "cloud/tsunami"]
+	path = cloud/tsunami
+	url = https://github.com/akshayknarayan/tsunami

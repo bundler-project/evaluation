@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tsunami = {path = "../../tsunami"}
+tsunami = {path = "./tsunami"}
 structopt = "0.2"
 rusoto_core = "0.40"
 failure = "0.1"
