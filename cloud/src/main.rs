@@ -81,9 +81,9 @@ fn install_basic_packages(ssh: &Session) -> Result<(), Error> {
 fn get_tools(ssh: &Session) -> Result<(), Error> {
     ssh.cmd("sudo sysctl -w net.ipv4.ip_forward=1")
         .map(|(_, _)| ())?;
-    ssh.cmd("sudo sysctl -w net.ipv4.tcp_wmem=\"4096000 12582912 12582912\"")
+    ssh.cmd("sudo sysctl -w net.ipv4.tcp_wmem=\"4096000 50331648 50331648\"")
         .map(|(_, _)| ())?;
-    ssh.cmd("sudo sysctl -w net.ipv4.tcp_rmem=\"4096000 12582912 12582912\"")
+    ssh.cmd("sudo sysctl -w net.ipv4.tcp_rmem=\"4096000 50331648 50331648\"")
         .map(|(_, _)| ())?;
     ssh.cmd("git clone --recursive https://github.com/bundler-project/tools")
         .map(|(_, _)| ())?;
@@ -141,7 +141,7 @@ fn nobundler_exp(
                 .context(iperf_cmd)
                 .into())
         } else {
-            let mut iperf_out = std::fs::File::create("./iperf_client.log")?;
+            let mut iperf_out = std::fs::File::create(&out_dir.join("./iperf_client.log"))?;
             iperf_out.write_all(out.as_bytes())?;
             Ok(())
         }
@@ -223,7 +223,7 @@ fn bundler_exp(
                 .context(iperf_cmd)
                 .into())
         } else {
-            let mut iperf_out = std::fs::File::create("./iperf_client.log")?;
+            let mut iperf_out = std::fs::File::create(&out_dir.join("./iperf_client.log"))?;
             iperf_out.write_all(out.as_bytes())?;
             Ok(())
         }
@@ -317,6 +317,18 @@ fn main() -> Result<(), Error> {
                "receiver_iface" => &receiver_iface,
             );
 
+            if opt.pause {
+                debug!(
+                    log,
+                    "pausing for manual instance inspection, press enter to continue"
+                );
+                use std::io::prelude::*;
+                let stdin = std::io::stdin();
+                let mut iterator = stdin.lock().lines();
+                iterator.next().unwrap().unwrap();
+                debug!(log, "continuing");
+            }
+
             std::fs::create_dir_all(Path::new("./nobundler-exp"))?;
             info!(log, "starting nobundler experiment");
 
@@ -331,6 +343,11 @@ fn main() -> Result<(), Error> {
                 &opt.inbox_qlen,
                 Path::new("./nobundler-exp"),
             )?;
+
+            // stop old processes
+            sender.cmd("sudo pkill iperf").unwrap_or_default();
+            sender.cmd("sudo pkill ping").unwrap_or_default();
+            recevr.cmd("sudo pkill iperf").unwrap_or_default();
 
             std::fs::create_dir_all(Path::new("./bundler-exp"))?;
             info!(log, "starting bundler experiment");
