@@ -13,4 +13,5 @@ rusoto_core = "0.40"
 failure = "0.1"
 regex = "1"
 lazy_static = "1"
-slog = "2"
+slog = { version = "2", features = ["max_level_trace"] }
+slog-term = "2"
