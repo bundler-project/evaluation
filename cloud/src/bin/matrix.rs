@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use slog::Drain;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use structopt::StructOpt;
 use tsunami::providers::{aws::MachineSetup, Setup};
 use tsunami::{Machine, TsunamiBuilder};
@@ -32,44 +32,39 @@ enum Node {
     },
 }
 
-fn main() -> Result<(), Error> {
-    let opt = Opt::from_args();
+#[derive(Deserialize, Serialize, Clone)]
+struct Exp {
+    from: Node,
+    to: Node,
+}
 
-    let decorator = slog_term::TermDecorator::new().build();
-    let drain = Mutex::new(slog_term::FullFormat::new(decorator).build()).fuse();
-    let log = slog::Logger::root(drain, slog::o!());
+fn register_node(
+    b: &mut TsunamiBuilder,
+    baremetal_meta: &mut HashMap<String, (String, String, String)>,
+    r: Node,
+) -> Result<String, Error> {
+    match r {
+        Node::Aws { region: r } => {
+            let m = MachineSetup::default()
+                .region(r.clone().parse()?)
+                .instance_type("t3.medium")
+                .setup(|ssh, log| {
+                    cloud::install_basic_packages(ssh)
+                        .map_err(|e| e.context("apt install failed"))?;
+                    slog::debug!(log, "finished apt install"; "node" => "m0");
+                    cloud::get_tools(ssh)
+                });
 
-    let f = std::fs::File::open(opt.cfg)?;
-    let r = std::io::BufReader::new(f);
-    let u: Vec<Node> = serde_json::from_reader(r)?;
-
-    let mut b = TsunamiBuilder::default();
-    b.set_logger(log);
-
-    // spawn the ec2 nodes
-    let mut baremetal_meta = HashMap::new();
-    for r in u {
-        match r {
-            Node::Aws { region: r } => {
-                let m = MachineSetup::default()
-                    .region(r.clone().parse()?)
-                    .instance_type("t3.medium")
-                    .setup(|ssh, log| {
-                        cloud::install_basic_packages(ssh)
-                            .map_err(|e| e.context("apt install failed"))?;
-                        slog::debug!(log, "finished apt install"; "node" => "m0");
-                        cloud::get_tools(ssh)
-                    });
-
-                b.add(r, Setup::AWS(m));
-            }
-            Node::Baremetal {
-                name: n,
-                ip: i,
-                user: u,
-                iface: f,
-            } => {
-                let m =
+            b.add(r.clone(), Setup::AWS(m));
+            Ok(r)
+        }
+        Node::Baremetal {
+            name: n,
+            ip: i,
+            user: u,
+            iface: f,
+        } => {
+            let m =
                     tsunami::providers::baremetal::Setup::new((i.as_str(), 22), Some(u.clone()))?
                         .setup(|ssh, log| {
                             cloud::install_basic_packages(ssh)
@@ -92,9 +87,7 @@ fn main() -> Result<(), Error> {
                         ssh.cmd("cd tools && git pull origin master && git submodule update --init --recursive").map(|(_, _)| ())?;
                     }
 
-                            ssh.cmd("make -C tools ~/.cargo/bin/cargo")
-                                .map(|(_, _)| ())?;
-                            ssh.cmd("cd ~/tools/udping && ~/.cargo/bin/cargo b")
+                            ssh.cmd("make -C tools udping/target/debug/udping_server udping/target/debug/udping_client mahimahi/src/frontend/mm-delay ")
                                 .map(|(_, _)| ())?;
 
                             // TODO check that opt.recv_iface exists
@@ -102,39 +95,60 @@ fn main() -> Result<(), Error> {
 
                             Ok(())
                         });
-                baremetal_meta.insert(n.clone(), (i, u, f));
-                b.add(n, Setup::Bare(m));
-            }
+            baremetal_meta.insert(n.clone(), (i, u, f));
+            b.add(n.clone(), Setup::Bare(m));
+            Ok(n)
         }
     }
+}
 
-    b.set_max_duration(1);
+fn main() -> Result<(), Error> {
+    let opt = Opt::from_args();
+
+    let decorator = slog_term::TermDecorator::new().build();
+    let drain = Mutex::new(slog_term::FullFormat::new(decorator).build()).fuse();
+    let log = slog::Logger::root(drain, slog::o!());
+
+    let f = std::fs::File::open(opt.cfg)?;
+    let r = std::io::BufReader::new(f);
+    let u: Vec<Exp> = serde_json::from_reader(r)?;
+
+    let mut b = TsunamiBuilder::default();
+    b.set_logger(log);
+
+    let mut pairs = vec![];
+
+    // spawn the ec2 nodes
+    let mut baremetal_meta = HashMap::new();
+    for r in u {
+        let from_name = register_node(&mut b, &mut baremetal_meta, r.from)?;
+        let to_name = register_node(&mut b, &mut baremetal_meta, r.to)?;
+        pairs.push((from_name, to_name));
+    }
+
+    b.set_max_duration(6);
     b.run(
         opt.pause,
         |vms: HashMap<String, Machine>, log: &slog::Logger| {
-            let names: Vec<String> = vms.keys().cloned().collect();
-            let names2 = names.clone();
-
-            let vms: HashMap<String, Mutex<Machine>> =
-                vms.into_iter().map(|(k, v)| (k, Mutex::new(v))).collect();
-
-            let pairs: Vec<(String, String)> =
-                names.into_iter().cartesian_product(names2).collect();
+            let vms: HashMap<String, Arc<Mutex<Machine>>> =
+                vms.into_iter().map(|(k, v)| (k, Arc::new(Mutex::new(v)))).collect();
 
             pairs
                 .into_par_iter()
                 .map(|(from, to)| {
-                    slog::info!(log, "waiting"; "sender" => &from, "receiver" => &to);
+                    let sender_lock = vms.get(&from).expect("vms get from").clone();
+                    let receiver_lock = vms.get(&to).expect("vms get to").clone();
                     let (sender, receiver) = if from < to {
-                        let sender = vms.get(&from).expect("vms get from").lock().unwrap();
-                        let receiver = vms.get(&to).expect("vms get to").lock().unwrap();
+                        slog::info!(log, "waiting for lock"; "sender" => &from, "receiver" => &to);
+                        let sender = sender_lock.lock().unwrap();
+                        let receiver = receiver_lock.lock().unwrap();
                         (sender, receiver)
                     } else if from > to {
-                        let receiver = vms.get(&to).expect("vms get to").lock().unwrap();
-                        let sender = vms.get(&from).expect("vms get from").lock().unwrap();
+                        slog::info!(log, "waiting for lock"; "sender" => &from, "receiver" => &to);
+                        let receiver = receiver_lock.lock().unwrap();
+                        let sender = sender_lock.lock().unwrap();
                         (sender, receiver)
                     } else {
-                        slog::info!(log, "skipping pair"; "sender" => &from, "receiver" => &to);
                         return Ok(());
                     };
 
@@ -148,7 +162,7 @@ fn main() -> Result<(), Error> {
                         .map(|(_, user, iface)| (user.clone(), iface.clone()))
                         .unwrap_or_else(|| ("ubuntu".to_string(), "ens5".to_string()));
 
-                    slog::info!(log, "pair"; "sender" => &from, "receiver" => &to);
+                    slog::info!(log, "locked pair"; "sender" => &from, "receiver" => &to);
 
                     let sender_ssh = sender.ssh.as_ref().expect("sender ssh connection");
                     let receiver_ssh = receiver.ssh.as_ref().expect("receiver ssh connection");
@@ -169,12 +183,12 @@ fn main() -> Result<(), Error> {
                         user: &receiver_user,
                     };
 
-                    sender_ssh.cmd("sudo pkill -9 client").unwrap_or_default();
-                    sender_ssh.cmd("sudo pkill -9 iperf").unwrap_or_default();
-                    sender_ssh.cmd("sudo pkill -9 bmon").unwrap_or_default();
-                    receiver_ssh.cmd("sudo pkill -9 server").unwrap_or_default();
-                    receiver_ssh.cmd("sudo pkill -9 iperf").unwrap_or_default();
-                    receiver_ssh.cmd("sudo pkill -9 bmon").unwrap_or_default();
+                    sender_ssh.cmd("pkill -9 udping_client").unwrap_or_default();
+                    sender_ssh.cmd("pkill -9 iperf").unwrap_or_default();
+                    sender_ssh.cmd("pkill -9 bmon").unwrap_or_default();
+                    receiver_ssh.cmd("pkill -9 udping_server").unwrap_or_default();
+                    receiver_ssh.cmd("pkill -9 iperf").unwrap_or_default();
+                    receiver_ssh.cmd("pkill -9 bmon").unwrap_or_default();
 
                     let control_path_string = format!("./{}-{}/control", from, to);
                     let control_path = Path::new(control_path_string.as_str());
@@ -183,30 +197,45 @@ fn main() -> Result<(), Error> {
                     if Path::new(&control_path_string).join("bmon.log").exists()
                         && Path::new(&control_path_string).join("udping.log").exists()
                     {
-                        slog::info!(log, "skipping control experiment"; "from" => &from, "to" => &to);
+                        slog::info!(log, "skipping control experiment"; "sender" => &from, "receiver" => &to);
                     } else {
-                        slog::info!(log, "running control experiment"; "from" => &from, "to" => &to);
+                        slog::info!(log, "running control experiment"; "sender" => &from, "receiver" => &to);
                         cloud::nobundler_exp_control(
                             &control_path,
                             &log,
                             &sender_node,
                             &receiver_node,
                         )
-                        .context("control experiment")?;
+                        .context(format!("control experiment {} -> {}", &from, &to))?;
                     }
+
+                    sender_ssh.cmd("pkill -9 udping_client").unwrap_or_default();
+                    sender_ssh.cmd("pkill -9 iperf").unwrap_or_default();
+                    sender_ssh.cmd("pkill -9 bmon").unwrap_or_default();
+                    receiver_ssh.cmd("pkill -9 udping_server").unwrap_or_default();
+                    receiver_ssh.cmd("pkill -9 iperf").unwrap_or_default();
+                    receiver_ssh.cmd("pkill -9 bmon").unwrap_or_default();
 
                     let iperf_path_string = format!("./{}-{}/iperf", from, to);
                     let iperf_path = Path::new(iperf_path_string.as_str());
                     std::fs::create_dir_all(iperf_path)?;
                     if Path::new(&iperf_path_string).join("bmon.log").exists()
                         && Path::new(&iperf_path_string).join("udping.log").exists() {
-                        slog::info!(log, "skipping iperf experiment"; "from" => &from, "to" => &to);
+                        slog::info!(log, "skipping iperf experiment"; "sender" => &from, "receiver" => &to);
                     } else {
-                        slog::info!(log, "running iperf experiment"; "from" => &from, "to" => &to);
+                        slog::info!(log, "running iperf experiment"; "sender" => &from, "receiver" => &to);
                         cloud::nobundler_exp_iperf(&iperf_path, &log, &sender_node, &receiver_node)
-                            .context("iperf experiment")?;
+                        .context(format!("iperf experiment {} -> {}", &from, &to))?;
                     }
+                    
+                    sender_ssh.cmd("pkill -9 udping_client").unwrap_or_default();
+                    sender_ssh.cmd("pkill -9 iperf").unwrap_or_default();
+                    sender_ssh.cmd("pkill -9 bmon").unwrap_or_default();
+                    receiver_ssh.cmd("pkill -9 udping_server").unwrap_or_default();
+                    receiver_ssh.cmd("pkill -9 iperf").unwrap_or_default();
+                    receiver_ssh.cmd("pkill -9 bmon").unwrap_or_default();
 
+                    slog::info!(log, "pair done"; "sender" => &from, "receiver" => &to);
                     Ok(())
                 })
                 .collect()
@@ -214,4 +243,11 @@ fn main() -> Result<(), Error> {
     )?;
 
     Ok(())
+}
+
+fn matrix(vms: &HashMap<String, Machine>) -> impl Iterator<Item = (String, String)> {
+    let names: Vec<String> = vms.keys().cloned().collect();
+    let names2 = names.clone();
+
+    names.into_iter().cartesian_product(names2)
 }

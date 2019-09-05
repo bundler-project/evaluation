@@ -129,8 +129,8 @@ pub fn nobundler_exp_control(
     receiver
         .ssh
         .cmd(&format!(
-            "screen -d -m bash -c \"bmon -p {} -b -o format:fmt='$(element:name) $(attr:rxrate:bytes)\n' > {}/bmon.out\"",
-            receiver.iface, receiver_home
+            "screen -d -m bash -c \"bmon -p {} -b -o format:fmt='$(element:name) $(attr:rxrate:bytes)\n' > {}/bmon.out 2> {}/bmon.out\"",
+            receiver.iface, receiver_home, receiver_home
         ))
         .map(|_| ())?;
 
@@ -186,7 +186,7 @@ pub fn install_basic_packages(ssh: &Session) -> Result<(), Error> {
             ssh.cmd("sudo apt update")
                 .map(|(_, _)| ())
                 .map_err(|e| e.context("apt update failed"))?;
-            ssh.cmd("sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y build-essential bmon iperf git automake autoconf libtool mahimahi")
+            ssh.cmd("sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y build-essential bmon iperf coreutils git automake autoconf libtool")
                 .map(|(_, _)| ())
                 .map_err(|e| e.context("apt install failed"))?;
             Ok(())
