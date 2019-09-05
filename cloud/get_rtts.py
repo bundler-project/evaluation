@@ -21,7 +21,7 @@ def parse_fn(fn):
     src, p1, p2, p3, it = ends.split("-")
     return (src, f"{p1}{p2}{p3}", it, with_bundler)
 
-fs = glob.iglob("./mit*/**/ping.log", recursive=True)
+fs = glob.iglob("./**/ping.log", recursive=True)
 rtts = {fn: list(rtts(fn)) for fn in fs}
 
 print("src", "dst", "iteration", "with_bundler", "avgrtt")
