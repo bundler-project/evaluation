@@ -49,9 +49,7 @@ for group in groups:
     with open(f"phase_{phase}.json", 'w') as f:
         objs = []
         for (src,dst) in group:
-            obj = {"from" : src, "to" : dst}
+            obj = {"from" : name_map[src], "to" : name_map[dst]}
             objs.append(obj)
         f.write(json.dumps(objs))
     phase+=1
-
-
