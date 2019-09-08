@@ -8,21 +8,13 @@ filename = sys.argv[1]
 with open(filename) as f:
     machines = json.loads(f.read())
 
-name_map = {}
-for machine in machines:
-    if 'Baremetal' in machine:
-        name = machine['Baremetal']['name']
-    elif 'Aws' in machine:
-        name = machine['Aws']['region']
-    name_map[name] = machine
+machines = {i: m for i,m in zip(range(len(machines)), machines)}
 
-names = name_map.keys()
-
-all_pairs = list(permutations(names, 2))
+all_pairs = list(permutations(machines.keys(), 2))
 pairs_done = set()
 num_pairs = len(all_pairs)
 groups = []
-group_size = int(len(names) / 2)
+group_size = 5
 
 while len(pairs_done) < num_pairs:
     i = 0
@@ -49,7 +41,7 @@ for group in groups:
     with open(f"phase_{phase}.json", 'w') as f:
         objs = []
         for (src,dst) in group:
-            obj = {"from" : name_map[src], "to" : name_map[dst]}
+            obj = {"from" : machines[src], "to" : machines[dst]}
             objs.append(obj)
         f.write(json.dumps(objs))
     phase+=1

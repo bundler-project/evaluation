@@ -47,40 +47,47 @@ if __name__ == "__main__":
 
     results_dir = sys.argv[1]
     out = open('udping_results.out', 'w')
-    out.write("path traffic port rtt\n")
+    out.write("src dst port ratio\n")
 
     mean_diff_threshold = int(sys.argv[2])
 
     paths = os.listdir(results_dir)
     for path in paths:
+        sp = path.split('-')
+        if not os.path.isdir(path) or len(sp) != 2:
+            continue
+        src, dst = sp
         control_pings = parse_udping(os.path.join(results_dir, path, 'control', 'udping.log'))
         iperf_pings = parse_udping(os.path.join(results_dir, path, 'iperf', 'udping.log'))
         #iperf_rates = parse_bmon(os.path.join(results_dir, path, 'iperf', 'bmon.log'))
 
         if control_pings:
             for srcport in control_pings.keys():
-                control = control_pings[srcport]
-                iperf = iperf_pings[srcport]
+                try:
+                    control = control_pings[srcport]
+                    iperf = iperf_pings[srcport]
 
-                control_mean = np.mean(control)
-                iperf_mean = np.mean(iperf)
+                    control_mean = np.mean(control)
+                    iperf_mean = np.mean(iperf)
 
-                diff = iperf_mean - control_mean
+                    diff = (iperf_mean / control_mean)
 
-                if diff >= mean_diff_threshold:
-                    print(f"path={path} port={srcport} control={control_mean:.1f} iperf={iperf_mean:.1f}")
+                    if ((diff - 1.0) * 100) >= mean_diff_threshold:
+                        print(f"src={src} dst={dst} port={srcport} control={control_mean:.1f} iperf={iperf_mean:.1f}")
+
+                    out.write(f"{src} {dst} {srcport} {diff}\n")
+                except:
+                    continue
 
 
         # Output for ggplot
-        if control_pings:
-            for (srcport, samples) in control_pings.items():
-                for sample in samples:
-                    out.write(f"{path} control {srcport} {sample}\n")
-        if iperf_pings:
-            for (srcport, samples) in iperf_pings.items():
-                for sample in samples:
-                    out.write(f"{path} iperf {srcport} {sample}\n")
+        #if control_pings:
+        #    for (srcport, samples) in control_pings.items():
+        #        for sample in samples:
+        #            out.write(f"{src} {dst} control {srcport} {sample}\n")
+        #if iperf_pings:
+        #    for (srcport, samples) in iperf_pings.items():
+        #        for sample in samples:
+        #            out.write(f"{src} {dst} iperf {srcport} {sample}\n")
 
     out.close()
-
-
