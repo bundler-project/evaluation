@@ -14,16 +14,16 @@ def parse_udping(fname):
         return
     port_pings = defaultdict(list)
     with open(fname) as f:
-        try:
-            for l in f.readlines():
+        for l in f.readlines():
+            try:
                 if 'Ping' in l:
                     sp = l.strip().split(" ")
                     rtt = float(sp[7].replace(",",""))
                     _, srcport = sp[9].replace(",","").split(":")
                     port_pings[srcport].append(rtt)
-            return(port_pings)
-        except Exception as e:
-            print(f"error: failed to parse udping for {fname}: {e}")
+            except Exception as e:
+                continue
+        return(port_pings)
 
 # expected format:
 # [iface] [rxrate_bytes]
@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
     results_dir = sys.argv[1]
     out = open('udping_results.out', 'w')
-    out.write("src dst port ratio\n")
+    out.write("src dst port experiment ratio\n")
 
     mean_diff_threshold = int(sys.argv[2])
 
@@ -59,6 +59,7 @@ if __name__ == "__main__":
         src, dst = sp
         control_pings = parse_udping(os.path.join(results_dir, path, 'control', 'udping.log'))
         iperf_pings = parse_udping(os.path.join(results_dir, path, 'iperf', 'udping.log'))
+        bundler_pings = parse_udping(os.path.join(results_dir, path, 'bundler', 'udping.log'))
         #iperf_rates = parse_bmon(os.path.join(results_dir, path, 'iperf', 'bmon.log'))
 
         if control_pings:
@@ -66,16 +67,20 @@ if __name__ == "__main__":
                 try:
                     control = control_pings[srcport]
                     iperf = iperf_pings[srcport]
+                    bundler = bundler_pings[srcport]
 
                     control_mean = np.mean(control)
                     iperf_mean = np.mean(iperf)
+                    bundler_mean = np.mean(bundler)
 
-                    diff = (iperf_mean / control_mean)
+                    iperf_diff = (iperf_mean / control_mean)
+                    bundler_diff = (bundler_mean / control_mean)
 
-                    if ((diff - 1.0) * 100) >= mean_diff_threshold:
-                        print(f"src={src} dst={dst} port={srcport} control={control_mean:.1f} iperf={iperf_mean:.1f}")
+                    if ((iperf_diff - 1.0) * 100) >= mean_diff_threshold:
+                        print(f"src={src} dst={dst} port={srcport} control={control_mean:.1f} iperf={iperf_mean:.1f} bundler={bundler_mean:.1f}")
 
-                    out.write(f"{src} {dst} {srcport} {diff}\n")
+                    out.write(f"{src} {dst} {srcport} iperf {iperf_diff}\n")
+                    out.write(f"{src} {dst} {srcport} bundler {bundler_diff}\n")
                 except:
                     continue
 

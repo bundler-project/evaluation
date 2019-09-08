@@ -122,8 +122,10 @@ fn register_node(
 fn check_path(from: &str, to: &str) -> bool {
     let control_path_string = format!("./{}-{}/control", from, to);
     let iperf_path_string = format!("./{}-{}/iperf", from, to);
+    let bundler_path_string = format!("./{}-{}/bundler", from, to);
     let control_path = Path::new(control_path_string.as_str());
-    let iperf_path = Path::new(control_path_string.as_str());
+    let iperf_path = Path::new(iperf_path_string.as_str());
+    let bundler_path = Path::new(bundler_path_string.as_str());
 
     if let Err(_) = std::fs::create_dir_all(control_path) {
         return true;
@@ -133,10 +135,16 @@ fn check_path(from: &str, to: &str) -> bool {
         return true;
     }
 
+    if let Err(_) = std::fs::create_dir_all(bundler_path) {
+        return true;
+    }
+
     if Path::new(&control_path_string).join("bmon.log").exists()
         && Path::new(&control_path_string).join("udping.log").exists()
         && Path::new(&iperf_path_string).join("bmon.log").exists()
         && Path::new(&iperf_path_string).join("udping.log").exists()
+        && Path::new(&bundler_path_string).join("bmon.log").exists()
+        && Path::new(&bundler_path_string).join("udping.log").exists()
     {
         return false;
     } else {
@@ -284,7 +292,7 @@ fn main() -> Result<(), Error> {
                     //}
 
                     let bundler_path_string = format!("./{}-{}/bundler", from, to);
-                    let bundler_path = Path::new(iperf_path_string.as_str());
+                    let bundler_path = Path::new(bundler_path_string.as_str());
                     std::fs::create_dir_all(bundler_path)?;
                     if Path::new(&bundler_path_string).join("bmon.log").exists()
                         && Path::new(&bundler_path_string).join("udping.log").exists()
@@ -292,8 +300,15 @@ fn main() -> Result<(), Error> {
                         slog::info!(log, "skipping bundler experiment");
                     } else {
                         slog::info!(log, "running bundler experiment");
-                        cloud::bundler_exp_iperf(&bundler_path, &log, &sender_node, &receiver_node)
-                            .context(format!("bundler experiment {} -> {}", &from, &to))?;
+                        cloud::bundler_exp_iperf(
+                            &bundler_path,
+                            &log,
+                            &sender_node,
+                            &receiver_node,
+                            "sfq",
+                            "25mbit",
+                        )
+                        .context(format!("bundler experiment {} -> {}", &from, &to))?;
                     }
 
                     cloud::pkill(sender_ssh, "udping_client", &log);

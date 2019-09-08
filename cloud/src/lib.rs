@@ -52,7 +52,7 @@ pub fn bundler_exp_iperf(
     std::thread::sleep(std::time::Duration::from_secs(5));
 
     // start nimbus
-    sender.cmd(&format!("cd ~/tools/nimbus && sudo screen -d -m bash -c \"./target/debug/nimbus --ipc=unix --use_switching=true --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=XTCP --bw_est_mode=true --bundler_qlen_alpha=100 --bundler_qlen_beta=10000 --bundler_qlen=100 > {}/ccp.out 2> {}/ccp.out\"", 
+    sender.ssh.cmd(&format!("cd ~/tools/nimbus && sudo screen -d -m bash -c \"./target/debug/nimbus --ipc=unix --use_switching=true --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=XTCP --bw_est_mode=true --bundler_qlen_alpha=100 --bundler_qlen_beta=10000 --bundler_qlen=100 > {}/ccp.out 2> {}/ccp.out\"", 
         sender_home, 
         sender_home,
     )).map(|(_, _)| ())?;
