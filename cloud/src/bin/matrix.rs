@@ -67,6 +67,8 @@ fn register_node(
                         .map(|(_, _)| ())?;
                     ssh.cmd("sudo sysctl -w net.ipv4.tcp_rmem=\"4096000 50331648 50331648\"")
                         .map(|(_, _)| ())?;
+                    ssh.cmd("sudo sysctl -w net.ipv4.tcp_limit_output_bytes=\"125000000\"")
+                        .map(|(_, _)| ())?;
                     ssh.cmd("git clone --recursive https://github.com/bundler-project/tools")
                         .map(|(_, _)| ())?;
 
@@ -91,14 +93,12 @@ fn register_node(
                     slog::debug!(log, "finished apt install"; "node" => "m0");
                     ssh.cmd("sudo sysctl -w net.ipv4.ip_forward=1")
                         .map(|(_, _)| ())?;
-                    ssh.cmd(
-                        "sudo sysctl -w net.ipv4.tcp_wmem=\"4096000 50331648 50331648\"",
-                    )
-                    .map(|(_, _)| ())?;
-                    ssh.cmd(
-                        "sudo sysctl -w net.ipv4.tcp_rmem=\"4096000 50331648 50331648\"",
-                    )
-                    .map(|(_, _)| ())?;
+                    ssh.cmd("sudo sysctl -w net.ipv4.tcp_wmem=\"4096000 50331648 50331648\"")
+                        .map(|(_, _)| ())?;
+                    ssh.cmd("sudo sysctl -w net.ipv4.tcp_rmem=\"4096000 50331648 50331648\"")
+                        .map(|(_, _)| ())?;
+                    ssh.cmd("sudo sysctl -w net.ipv4.tcp_limit_output_bytes=\"125000000\"")
+                        .map(|(_, _)| ())?;
                     if let Err(_) = ssh
                         .cmd("git clone --recursive https://github.com/bundler-project/tools")
                         .map(|(_, _)| ())
@@ -245,51 +245,43 @@ fn main() -> Result<(), Error> {
                         "receiver_user" => receiver_node.user,
                     );
 
-                    cloud::pkill(sender_ssh, "udping_client", &log);
-                    cloud::pkill(sender_ssh, "iperf", &log);
-                    cloud::pkill(sender_ssh, "bmon", &log);
-                    cloud::pkill(receiver_ssh, "udping_server", &log);
-                    cloud::pkill(receiver_ssh, "iperf", &log);
-                    cloud::pkill(receiver_ssh, "bmon", &log);
+                    cloud::reset(&sender_node, &receiver_node, &log);
 
-                    //let control_path_string = format!("./{}-{}/control", from, to);
-                    //let control_path = Path::new(control_path_string.as_str());
-                    //std::fs::create_dir_all(control_path)?;
+                    let control_path_string = format!("./{}-{}/control", from, to);
+                    let control_path = Path::new(control_path_string.as_str());
+                    std::fs::create_dir_all(control_path)?;
 
-                    //if Path::new(&control_path_string).join("bmon.log").exists()
-                    //    && Path::new(&control_path_string).join("udping.log").exists()
-                    //{
-                    //    slog::info!(log, "skipping control experiment");
-                    //} else {
-                    //    slog::info!(log, "running control experiment");
-                    //    cloud::nobundler_exp_control(
-                    //        &control_path,
-                    //        &log,
-                    //        &sender_node,
-                    //        &receiver_node,
-                    //    )
-                    //    .context(format!("control experiment {} -> {}", &from, &to))?;
-                    //}
+                    if Path::new(&control_path_string).join("bmon.log").exists()
+                        && Path::new(&control_path_string).join("udping.log").exists()
+                    {
+                        slog::info!(log, "skipping control experiment");
+                    } else {
+                        slog::info!(log, "running control experiment");
+                        cloud::nobundler_exp_control(
+                            &control_path,
+                            &log,
+                            &sender_node,
+                            &receiver_node,
+                        )
+                        .context(format!("control experiment {} -> {}", &from, &to))?;
+                    }
 
-                    //cloud::pkill(sender_ssh, "udping_client", &log);
-                    //cloud::pkill(sender_ssh, "iperf", &log);
-                    //cloud::pkill(sender_ssh, "bmon", &log);
-                    //cloud::pkill(receiver_ssh, "udping_server", &log);
-                    //cloud::pkill(receiver_ssh, "iperf", &log);
-                    //cloud::pkill(receiver_ssh, "bmon", &log);
+                    cloud::reset(&sender_node, &receiver_node, &log);
 
-                    //let iperf_path_string = format!("./{}-{}/iperf", from, to);
-                    //let iperf_path = Path::new(iperf_path_string.as_str());
-                    //std::fs::create_dir_all(iperf_path)?;
-                    //if Path::new(&iperf_path_string).join("bmon.log").exists()
-                    //    && Path::new(&iperf_path_string).join("udping.log").exists()
-                    //{
-                    //    slog::info!(log, "skipping iperf experiment");
-                    //} else {
-                    //    slog::info!(log, "running iperf experiment");
-                    //    cloud::nobundler_exp_iperf(&iperf_path, &log, &sender_node, &receiver_node)
-                    //        .context(format!("iperf experiment {} -> {}", &from, &to))?;
-                    //}
+                    let iperf_path_string = format!("./{}-{}/iperf", from, to);
+                    let iperf_path = Path::new(iperf_path_string.as_str());
+                    std::fs::create_dir_all(iperf_path)?;
+                    if Path::new(&iperf_path_string).join("bmon.log").exists()
+                        && Path::new(&iperf_path_string).join("udping.log").exists()
+                    {
+                        slog::info!(log, "skipping iperf experiment");
+                    } else {
+                        slog::info!(log, "running iperf experiment");
+                        cloud::nobundler_exp_iperf(&iperf_path, &log, &sender_node, &receiver_node)
+                            .context(format!("iperf experiment {} -> {}", &from, &to))?;
+                    }
+
+                    cloud::reset(&sender_node, &receiver_node, &log);
 
                     let bundler_path_string = format!("./{}-{}/bundler", from, to);
                     let bundler_path = Path::new(bundler_path_string.as_str());
@@ -306,17 +298,12 @@ fn main() -> Result<(), Error> {
                             &sender_node,
                             &receiver_node,
                             "sfq",
-                            "25mbit",
+                            "1000mbit",
                         )
                         .context(format!("bundler experiment {} -> {}", &from, &to))?;
                     }
 
-                    cloud::pkill(sender_ssh, "udping_client", &log);
-                    cloud::pkill(sender_ssh, "iperf", &log);
-                    cloud::pkill(sender_ssh, "bmon", &log);
-                    cloud::pkill(receiver_ssh, "udping_server", &log);
-                    cloud::pkill(receiver_ssh, "iperf", &log);
-                    cloud::pkill(receiver_ssh, "bmon", &log);
+                    cloud::reset(&sender_node, &receiver_node, &log);
 
                     slog::info!(log, "pair done");
                     Ok(())

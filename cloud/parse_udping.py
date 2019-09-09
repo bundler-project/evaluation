@@ -29,27 +29,30 @@ def parse_udping(fname):
 # [iface] [rxrate_bytes]
 def parse_bmon(fname):
     if not os.path.isfile(fname):
-        #print(f"error: missing {fname}")
+        print(f"error: missing {fname}")
         return
     rates = []
     with open(fname) as f:
         try:
             for l in f.readlines():
-                _, rxrate = l.strip().split(" ")
+                _, rxrate = l.strip().split()
                 rxrate = float(rxrate) * 8
                 rates.append(rxrate)
         except Exception as e:
-            print(f"error: failed to parse udping for {fname}: {e}")
+            print(f"error: failed to parse bmon for {fname}: {e}")
+    return rates
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("usage: python parse.py [path/to/results_dir] [mean_diff_threshold]")
+    if len(sys.argv) != 2:
+        print("usage: python parse.py [path/to/results_dir]")
+        raise Exception()
 
     results_dir = sys.argv[1]
-    out = open('udping_results.out', 'w')
-    out.write("src dst port experiment ratio\n")
+    ping = open('udping_results.out', 'w')
+    ping.write("src dst port Latency rtt\n")
 
-    mean_diff_threshold = int(sys.argv[2])
+    bmon = open('bmon_results.out', 'w')
+    bmon.write("src dst Throughput bw\n")
 
     paths = os.listdir(results_dir)
     for path in paths:
@@ -60,39 +63,45 @@ if __name__ == "__main__":
         control_pings = parse_udping(os.path.join(results_dir, path, 'control', 'udping.log'))
         iperf_pings = parse_udping(os.path.join(results_dir, path, 'iperf', 'udping.log'))
         bundler_pings = parse_udping(os.path.join(results_dir, path, 'bundler', 'udping.log'))
-        #iperf_rates = parse_bmon(os.path.join(results_dir, path, 'iperf', 'bmon.log'))
 
-        if control_pings:
+        iperf_rates = parse_bmon(os.path.join(results_dir, path, 'iperf', 'bmon.log'))
+        bundler_rates = parse_bmon(os.path.join(results_dir, path, 'bundler', 'bmon.log'))
+
+        if bundler_pings:
             for srcport in control_pings.keys():
                 try:
                     control = control_pings[srcport]
-                    iperf = iperf_pings[srcport]
-                    bundler = bundler_pings[srcport]
-
-                    control_mean = np.mean(control)
-                    iperf_mean = np.mean(iperf)
-                    bundler_mean = np.mean(bundler)
-
-                    iperf_diff = (iperf_mean / control_mean)
-                    bundler_diff = (bundler_mean / control_mean)
-
-                    if ((iperf_diff - 1.0) * 100) >= mean_diff_threshold:
-                        print(f"src={src} dst={dst} port={srcport} control={control_mean:.1f} iperf={iperf_mean:.1f} bundler={bundler_mean:.1f}")
-
-                    out.write(f"{src} {dst} {srcport} iperf {iperf_diff}\n")
-                    out.write(f"{src} {dst} {srcport} bundler {bundler_diff}\n")
+                    for r in control:
+                        ping.write(f"{src} {dst} {srcport} control {r}\n")
                 except:
                     continue
 
+                try:
+                    iperf = iperf_pings[srcport]
+                    for r in iperf:
+                        ping.write(f"{src} {dst} {srcport} iperf {r}\n")
+                except:
+                    continue
 
-        # Output for ggplot
-        #if control_pings:
-        #    for (srcport, samples) in control_pings.items():
-        #        for sample in samples:
-        #            out.write(f"{src} {dst} control {srcport} {sample}\n")
-        #if iperf_pings:
-        #    for (srcport, samples) in iperf_pings.items():
-        #        for sample in samples:
-        #            out.write(f"{src} {dst} iperf {srcport} {sample}\n")
+                try:
+                    bundler = bundler_pings[srcport]
+                    for r in bundler:
+                        ping.write(f"{src} {dst} {srcport} bundler {r}\n")
+                except:
+                    continue
 
-    out.close()
+            try:
+                for r in iperf_rates:
+                    bmon.write(f"{src} {dst} iperf {r}\n")
+            except Exception as e:
+                print("iperf rates print failed", e)
+                pass
+
+            try:
+                for r in bundler_rates:
+                    bmon.write(f"{src} {dst} bundler {r}\n")
+            except:
+                pass
+
+    ping.close()
+    bmon.close()

@@ -52,7 +52,7 @@ pub fn bundler_exp_iperf(
     std::thread::sleep(std::time::Duration::from_secs(5));
 
     // start nimbus
-    sender.ssh.cmd(&format!("cd ~/tools/nimbus && sudo screen -d -m bash -c \"./target/debug/nimbus --ipc=unix --use_switching=true --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=XTCP --bw_est_mode=true --bundler_qlen_alpha=100 --bundler_qlen_beta=10000 --bundler_qlen=100 > {}/ccp.out 2> {}/ccp.out\"", 
+    sender.ssh.cmd(&format!("cd ~/tools/nimbus && sudo screen -d -m bash -c \"./target/debug/nimbus --ipc=unix --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=Delay --use_switching --uest=125000000 --bundler_qlen_alpha=100 --bundler_qlen_beta=10000 --bundler_qlen=100 > {}/ccp.out 2> {}/ccp.out\"", 
         sender_home, 
         sender_home,
     )).map(|(_, _)| ())?;
@@ -73,10 +73,10 @@ pub fn bundler_exp_iperf(
 
     // udping sender -> receiver
     let udping_sender_receiver = format!("cd ~/tools/udping && screen -d -m bash -c \"./target/debug/udping_client -c {} -p 5999 > {}/udping_receiver.out 2> {}/udping_receiver.out\"", receiver.ip, sender_home, sender_home);
-    slog::debug!(log, "starting udping"; "from" => sender.name, "to" => receiver.name);
+    slog::debug!(log, "starting udping");
     sender.ssh.cmd(&udping_sender_receiver).map(|_| ())?;
     // bmon receiver
-    slog::debug!(log, "starting bmon"; "from" => sender.name, "to" => receiver.name);
+    slog::debug!(log, "starting bmon");
     receiver
         .ssh
         .cmd(&format!(
@@ -96,11 +96,11 @@ pub fn bundler_exp_iperf(
         sender_home,
     );
 
-    slog::debug!(log, "starting iperf sender 1"; "from" => sender.name, "to" => receiver.name, "cmd" => &iperf_cmd);
+    slog::debug!(log, "starting iperf sender 1"; "cmd" => &iperf_cmd);
     sender.ssh.cmd(&iperf_cmd).map(|_| ())?;
 
     let iperf_cmd = format!("screen -d -m bash -c \"iperf -c {} -p 5001 -t 60 -i 1 -P 10 > {}/iperf_client.out 2> {}/iperf_client.out\"", receiver.ip, sender_home, sender_home);
-    slog::debug!(log, "starting iperf sender 2"; "from" => sender.name, "to" => receiver.name, "cmd" => &iperf_cmd);
+    slog::debug!(log, "starting iperf sender 2"; "cmd" => &iperf_cmd);
     sender.ssh.cmd(&iperf_cmd).map(|_| ())?;
 
     // wait for 90s
@@ -362,6 +362,21 @@ pub fn get_file(ssh: &Session, remote_path: &Path, local_path: &Path) -> Result<
         })
         .map_err(|e| e.context(format!("scp {:?}", remote_path)))?;
     Ok(())
+}
+
+pub fn reset(sender: &Node, receiver: &Node, log: &slog::Logger)  {
+    let sender_ssh = sender.ssh;
+    pkill(sender_ssh, "udping_client", &log);
+    pkill(sender_ssh, "iperf", &log);
+    pkill(sender_ssh, "bmon", &log);
+    sender_ssh.cmd("sudo pkill -9 inbox").unwrap_or_default();
+    sender_ssh.cmd("sudo pkill -9 nimbus").unwrap_or_default();
+    sender_ssh.cmd(&format!("sudo tc qdisc del dev {} root", sender.iface)).unwrap_or_default();
+    let receiver_ssh = receiver.ssh;
+    pkill(receiver_ssh, "udping_server", &log);
+    pkill(receiver_ssh, "iperf", &log);
+    pkill(receiver_ssh, "bmon", &log);
+    receiver_ssh.cmd("sudo pkill -9 outbox").unwrap_or_default();
 }
 
 pub fn pkill(ssh: &Session, procname: &str, _log: &slog::Logger) {
