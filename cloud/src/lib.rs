@@ -16,6 +16,50 @@ pub struct Node<'a, 'b> {
     pub user: &'b str,
 }
 
+// ip netns: http://man7.org/linux/man-pages/man8/ip-netns.8.html
+// netns: https://unix.stackexchange.com/questions/156847/linux-namespace-how-to-connect-internet-in-network-namespace
+// iptables: https://unix.stackexchange.com/questions/222054/how-can-i-use-linux-as-a-gateway
+pub fn setup_netns(
+    log: &slog::Logger, 
+    sender: &Node,
+) -> Result<(), Error> {
+    sender.ssh.cmd("sudo ip netns add BUNDLER_NS")?;
+    sender.ssh.cmd("sudo ip link add veth0 type veth peer name veth1")?;
+    sender.ssh.cmd("sudo ip link set veth1 netns BUNDLER_NS")?;
+
+    let out = sender.ssh.cmd("sudo ip netns").map(|(x, _)| x)?;
+    slog::trace!(log, "setup netns"; "out" => out);
+
+    sender.ssh.cmd("sudo ip link add name br0 type bridge")?;
+    sender.ssh.cmd("sudo ip link set veth0 master br0")?;
+    sender.ssh.cmd("sudo ip addr add 100.64.0.1/24 dev br0")?;
+    sender.ssh.cmd("sudo ip link set br0 up")?;
+    sender.ssh.cmd("sudo ip link set veth0 up")?;
+
+    sender.ssh.cmd("sudo ip netns exec BUNDLER_NS ip link set veth1 up")?;
+    sender.ssh.cmd("sudo ip netns exec BUNDLER_NS ip addr add dev veth1 100.64.0.2/24")?;
+    sender.ssh.cmd("sudo ip netns exec BUNDLER_NS ip route add default via 100.64.0.1")?;
+
+    sender.ssh.cmd(&format!("sudo iptables -t nat -A POSTROUTING -o {} -j MASQUERADE", sender.iface))?;
+    sender.ssh.cmd(&format!("sudo iptables -A FORWARD -i veth0 -o {} -j ACCEPT", sender.iface))?;
+
+    Ok(())
+}
+
+pub fn cleanup_netns(
+    log: &slog::Logger, 
+    sender: &Node,
+) -> Result<(), Error> {
+    sender.ssh.cmd("sudo ip netns del BUNDLER_NS")?;
+    sender.ssh.cmd("sudo ip link del dev br0")?;
+    sender.ssh.cmd("sudo bash -c \"iptables -F && iptables -t nat -F && iptables -X\"")?;
+
+    let out = sender.ssh.cmd("sudo ip netns").map(|(x, _)| x)?;
+    slog::trace!(log, "cleanup netns"; "out" => out);
+
+    Ok(())
+}
+
 pub fn bundler_exp_iperf(
     out_dir: &Path,
     log: &slog::Logger,
@@ -26,6 +70,9 @@ pub fn bundler_exp_iperf(
 ) -> Result<(), Error> {
     let sender_home = get_home(sender.ssh, sender.user)?;
     let receiver_home = get_home(receiver.ssh, receiver.user)?;
+
+    cleanup_netns(log, sender).unwrap_or_default();
+    setup_netns(log, sender)?;
 
     // start outbox
     receiver.ssh.cmd(&format!("cd ~/tools/bundler && sudo screen -d -m bash -c \"./target/debug/outbox --filter=\\\"dst portrange 5000-6000\\\" --iface={} --inbox {}:28316 --sample_rate=64 > {}/outbox.out 2> {}/outbox.out\"",
@@ -52,7 +99,7 @@ pub fn bundler_exp_iperf(
     std::thread::sleep(std::time::Duration::from_secs(5));
 
     // start nimbus
-    sender.ssh.cmd(&format!("cd ~/tools/nimbus && sudo screen -d -m bash -c \"./target/debug/nimbus --ipc=unix --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=Delay --use_switching --uest=125000000 --bundler_qlen_alpha=100 --bundler_qlen_beta=10000 --bundler_qlen=100 > {}/ccp.out 2> {}/ccp.out\"", 
+    sender.ssh.cmd(&format!("cd ~/tools/nimbus && sudo screen -d -m bash -c \"./target/debug/nimbus --ipc=unix --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=Delay --uest=875000000 --bundler_qlen_alpha=100 --bundler_qlen_beta=10000 --bundler_qlen=100 > {}/ccp.out 2> {}/ccp.out\"", 
         sender_home, 
         sender_home,
     )).map(|(_, _)| ())?;
@@ -90,7 +137,7 @@ pub fn bundler_exp_iperf(
 
     // 2x iperf sender
     let iperf_cmd = format!(
-        "screen -d -m bash -c \"iperf -c {} -p 5001 -t 60 -i 1 -P 10 > {}/iperf_client_1.out 2> {}/iperf_client_1.out\"",
+        "screen -d -m bash -c \"sudo ip netns exec BUNDLER_NS iperf -c {} -p 5001 -t 60 -i 1 -P 10 > {}/iperf_client_1.out 2> {}/iperf_client_1.out\"",
         receiver.ip,
         sender_home,
         sender_home,
@@ -99,12 +146,14 @@ pub fn bundler_exp_iperf(
     slog::debug!(log, "starting iperf sender 1"; "cmd" => &iperf_cmd);
     sender.ssh.cmd(&iperf_cmd).map(|_| ())?;
 
-    let iperf_cmd = format!("screen -d -m bash -c \"iperf -c {} -p 5001 -t 60 -i 1 -P 10 > {}/iperf_client.out 2> {}/iperf_client.out\"", receiver.ip, sender_home, sender_home);
+    let iperf_cmd = format!("screen -d -m bash -c \"sudo ip netns exec BUNDLER_NS iperf -c {} -p 5001 -t 60 -i 1 -P 10 > {}/iperf_client.out 2> {}/iperf_client.out\"", receiver.ip, sender_home, sender_home);
     slog::debug!(log, "starting iperf sender 2"; "cmd" => &iperf_cmd);
     sender.ssh.cmd(&iperf_cmd).map(|_| ())?;
 
     // wait for 90s
     std::thread::sleep(std::time::Duration::from_secs(90));
+
+    cleanup_netns(log, sender)?;
 
     get_file(
         sender.ssh,

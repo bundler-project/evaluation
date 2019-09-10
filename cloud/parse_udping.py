@@ -10,7 +10,7 @@ MEAN_DIFF_THRESHOLD = 5.0
 # Sep 04 20:55:50.139 INFO Ping response, time: [rtt], local: 0.0.0.0:[srcport], from: ...
 def parse_udping(fname):
     if not os.path.isfile(fname):
-        #print(f"error: missing {fname}")
+        print(f"error: missing {fname}")
         return
     port_pings = defaultdict(list)
     with open(fname) as f:
@@ -54,6 +54,9 @@ if __name__ == "__main__":
     bmon = open('bmon_results.out', 'w')
     bmon.write("src dst Throughput bw\n")
 
+    base_rtts = open('minrtts.out', 'w')
+    base_rtts.write("src dst port Latency\n")
+
     paths = os.listdir(results_dir)
     for path in paths:
         sp = path.split('-')
@@ -75,6 +78,9 @@ if __name__ == "__main__":
                         ping.write(f"{src} {dst} {srcport} control {r}\n")
                 except:
                     continue
+
+                if np.mean(control_pings[srcport]) > 50:
+                    base_rtts.write(f"{src} {dst} {srcport} {np.mean(control_pings[srcport])}\n")
 
                 try:
                     iperf = iperf_pings[srcport]

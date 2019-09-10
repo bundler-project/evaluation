@@ -97,7 +97,7 @@ fn register_node(
                         .map(|(_, _)| ())?;
                     ssh.cmd("sudo sysctl -w net.ipv4.tcp_rmem=\"4096000 50331648 50331648\"")
                         .map(|(_, _)| ())?;
-                    ssh.cmd("sudo sysctl -w net.ipv4.tcp_limit_output_bytes=\"125000000\"")
+                    ssh.cmd("sudo sysctl -w net.ipv4.tcp_limit_output_bytes=\"250000000\"")
                         .map(|(_, _)| ())?;
                     if let Err(_) = ssh
                         .cmd("git clone --recursive https://github.com/bundler-project/tools")

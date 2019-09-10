@@ -8,6 +8,17 @@ filename = sys.argv[1]
 with open(filename) as f:
     machines = json.loads(f.read())
 
+def lookup_pair_rtt(src, dst):
+    with open("minrtts.out", 'r') as f:
+        for line in f:
+            frm, to, _, _ = line.split()
+            if src not in machines or dst not in machines:
+                continue
+            print(src, dst, frm, to)
+            if frm == list(machines[src].values())[0]['name'] and to == list(machines[dst].values())[0]['name']:
+                return True
+        return False
+
 machines = {i: m for i,m in zip(range(len(machines)), machines)}
 
 all_pairs = list(permutations(machines.keys(), 2))
@@ -16,7 +27,7 @@ num_pairs = len(all_pairs)
 groups = []
 group_size = 5
 
-while len(pairs_done) < num_pairs:
+while len(all_pairs) > 0:
     i = 0
     curr_group = []
     machines_in_use = set()
@@ -27,10 +38,11 @@ while len(pairs_done) < num_pairs:
         src, dst = all_pairs[i]
         if not src in machines_in_use and not dst in machines_in_use:
             pair = all_pairs.pop(i)
-            pairs_done.add(pair)
-            curr_group.append(pair)
-            machines_in_use.add(src)
-            machines_in_use.add(dst)
+            if lookup_pair_rtt(src, dst):
+                pairs_done.add(pair)
+                curr_group.append(pair)
+                machines_in_use.add(src)
+                machines_in_use.add(dst)
         else:
             i+=1
 
