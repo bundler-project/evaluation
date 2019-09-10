@@ -312,6 +312,24 @@ fn main() -> Result<(), Error> {
         },
     )?;
 
+    slog::info!(log, "collecting logs");
+
+    std::process::Command::new("python3")
+        .arg("parse_udping.py")
+        .arg(".")
+        .spawn()?
+        .wait()?;
+
+    std::process::Command::new("Rscript")
+        .arg("plot_paths.r")
+        .spawn()?
+        .wait()?;
+
+    std::process::Command::new("python3")
+        .arg("plot_ccp.py")
+        .spawn()?
+        .wait()?;
+
     Ok(())
 }
 

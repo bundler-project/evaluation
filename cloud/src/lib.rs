@@ -19,12 +19,11 @@ pub struct Node<'a, 'b> {
 // ip netns: http://man7.org/linux/man-pages/man8/ip-netns.8.html
 // netns: https://unix.stackexchange.com/questions/156847/linux-namespace-how-to-connect-internet-in-network-namespace
 // iptables: https://unix.stackexchange.com/questions/222054/how-can-i-use-linux-as-a-gateway
-pub fn setup_netns(
-    log: &slog::Logger, 
-    sender: &Node,
-) -> Result<(), Error> {
+pub fn setup_netns(log: &slog::Logger, sender: &Node) -> Result<(), Error> {
     sender.ssh.cmd("sudo ip netns add BUNDLER_NS")?;
-    sender.ssh.cmd("sudo ip link add veth0 type veth peer name veth1")?;
+    sender
+        .ssh
+        .cmd("sudo ip link add veth0 type veth peer name veth1")?;
     sender.ssh.cmd("sudo ip link set veth1 netns BUNDLER_NS")?;
 
     let out = sender.ssh.cmd("sudo ip netns").map(|(x, _)| x)?;
@@ -36,23 +35,35 @@ pub fn setup_netns(
     sender.ssh.cmd("sudo ip link set br0 up")?;
     sender.ssh.cmd("sudo ip link set veth0 up")?;
 
-    sender.ssh.cmd("sudo ip netns exec BUNDLER_NS ip link set veth1 up")?;
-    sender.ssh.cmd("sudo ip netns exec BUNDLER_NS ip addr add dev veth1 100.64.0.2/24")?;
-    sender.ssh.cmd("sudo ip netns exec BUNDLER_NS ip route add default via 100.64.0.1")?;
+    sender
+        .ssh
+        .cmd("sudo ip netns exec BUNDLER_NS ip link set veth1 up")?;
+    sender
+        .ssh
+        .cmd("sudo ip netns exec BUNDLER_NS ip addr add dev veth1 100.64.0.2/24")?;
+    sender
+        .ssh
+        .cmd("sudo ip netns exec BUNDLER_NS ip route add default via 100.64.0.1")?;
 
-    sender.ssh.cmd(&format!("sudo iptables -t nat -A POSTROUTING -o {} -j MASQUERADE", sender.iface))?;
-    sender.ssh.cmd(&format!("sudo iptables -A FORWARD -i veth0 -o {} -j ACCEPT", sender.iface))?;
+    sender.ssh.cmd(&format!(
+        "sudo iptables -t nat -A POSTROUTING -o {} -j MASQUERADE",
+        sender.iface
+    ))?;
+    sender.ssh.cmd(&format!(
+        "sudo iptables -A FORWARD -i veth0 -o {} -j ACCEPT",
+        sender.iface
+    ))?;
 
     Ok(())
 }
 
-pub fn cleanup_netns(
-    log: &slog::Logger, 
-    sender: &Node,
-) -> Result<(), Error> {
+pub fn cleanup_netns(log: &slog::Logger, sender: &Node) -> Result<(), Error> {
     sender.ssh.cmd("sudo ip netns del BUNDLER_NS")?;
     sender.ssh.cmd("sudo ip link del dev br0")?;
-    sender.ssh.cmd("sudo bash -c \"iptables -F && iptables -t nat -F && iptables -X\"")?;
+    sender.ssh.cmd("sudo ip link del dev veth0")?;
+    sender
+        .ssh
+        .cmd("sudo bash -c \"iptables -F && iptables -t nat -F && iptables -X\"")?;
 
     let out = sender.ssh.cmd("sudo ip netns").map(|(x, _)| x)?;
     slog::trace!(log, "cleanup netns"; "out" => out);
@@ -99,11 +110,16 @@ pub fn bundler_exp_iperf(
     std::thread::sleep(std::time::Duration::from_secs(5));
 
     // start nimbus
-    sender.ssh.cmd(&format!("cd ~/tools/nimbus && sudo screen -d -m bash -c \"./target/debug/nimbus --ipc=unix --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=Delay --uest=875000000 --bundler_qlen_alpha=100 --bundler_qlen_beta=10000 --bundler_qlen=100 > {}/ccp.out 2> {}/ccp.out\"", 
-        sender_home, 
+    sender.ssh.cmd(&format!("cd ~/tools/nimbus && sudo screen -d -m bash -c \"./target/debug/nimbus --ipc=unix --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=Delay --uest=875000000 --bundler_qlen_alpha=100 --bundler_qlen_beta=10000 --bundler_qlen=1000 > {}/ccp.out 2> {}/ccp.out\"",
+        sender_home,
         sender_home,
     )).map(|(_, _)| ())?;
-    
+
+    //sender.ssh.cmd(&format!("cd ~/tools/ccp_copa && sudo screen -d -m bash -c \"./target/debug/copa --ipc=unix --default_delta=0.125 --delta_mode=NoTCP > {}/ccp.out 2> {}/ccp.out\"",
+    //    sender_home,
+    //    sender_home,
+    //))?;
+
     // let everything settle
     std::thread::sleep(std::time::Duration::from_secs(5));
 
@@ -137,7 +153,7 @@ pub fn bundler_exp_iperf(
 
     // 2x iperf sender
     let iperf_cmd = format!(
-        "screen -d -m bash -c \"sudo ip netns exec BUNDLER_NS iperf -c {} -p 5001 -t 60 -i 1 -P 10 > {}/iperf_client_1.out 2> {}/iperf_client_1.out\"",
+        "screen -d -m bash -c \"sudo ip netns exec BUNDLER_NS iperf -c {} -p 5001 -t 150 -i 1 -P 10 > {}/iperf_client_1.out 2> {}/iperf_client_1.out\"",
         receiver.ip,
         sender_home,
         sender_home,
@@ -146,12 +162,12 @@ pub fn bundler_exp_iperf(
     slog::debug!(log, "starting iperf sender 1"; "cmd" => &iperf_cmd);
     sender.ssh.cmd(&iperf_cmd).map(|_| ())?;
 
-    let iperf_cmd = format!("screen -d -m bash -c \"sudo ip netns exec BUNDLER_NS iperf -c {} -p 5001 -t 60 -i 1 -P 10 > {}/iperf_client.out 2> {}/iperf_client.out\"", receiver.ip, sender_home, sender_home);
+    let iperf_cmd = format!("screen -d -m bash -c \"sudo ip netns exec BUNDLER_NS iperf -c {} -p 5001 -t 150 -i 1 -P 10 > {}/iperf_client.out 2> {}/iperf_client.out\"", receiver.ip, sender_home, sender_home);
     slog::debug!(log, "starting iperf sender 2"; "cmd" => &iperf_cmd);
     sender.ssh.cmd(&iperf_cmd).map(|_| ())?;
 
     // wait for 90s
-    std::thread::sleep(std::time::Duration::from_secs(90));
+    std::thread::sleep(std::time::Duration::from_secs(180));
 
     cleanup_netns(log, sender)?;
 
@@ -238,7 +254,7 @@ pub fn nobundler_exp_iperf(
 
     // 2x iperf sender
     let iperf_cmd = format!(
-        "screen -d -m bash -c \"iperf -c {} -p 5001 -t 60 -i 1 -P 10 > {}/iperf_client_1.out 2> {}/iperf_client_1.out\"",
+        "screen -d -m bash -c \"iperf -c {} -p 5001 -t 150 -i 1 -P 10 > {}/iperf_client_1.out 2> {}/iperf_client_1.out\"",
         receiver.ip,
         sender_home,
         sender_home,
@@ -247,12 +263,12 @@ pub fn nobundler_exp_iperf(
     slog::debug!(log, "starting iperf sender 1"; "from" => sender.name, "to" => receiver.name, "cmd" => &iperf_cmd);
     sender.ssh.cmd(&iperf_cmd).map(|_| ())?;
 
-    let iperf_cmd = format!("screen -d -m bash -c \"iperf -c {} -p 5001 -t 60 -i 1 -P 10 > {}/iperf_client.out 2> {}/iperf_client.out\"", receiver.ip, sender_home, sender_home);
+    let iperf_cmd = format!("screen -d -m bash -c \"iperf -c {} -p 5001 -t 150 -i 1 -P 10 > {}/iperf_client.out 2> {}/iperf_client.out\"", receiver.ip, sender_home, sender_home);
     slog::debug!(log, "starting iperf sender 2"; "from" => sender.name, "to" => receiver.name, "cmd" => &iperf_cmd);
     sender.ssh.cmd(&iperf_cmd).map(|_| ())?;
 
     // wait for 90s
-    std::thread::sleep(std::time::Duration::from_secs(90));
+    std::thread::sleep(std::time::Duration::from_secs(180));
 
     get_file(
         sender.ssh,
@@ -313,7 +329,7 @@ pub fn nobundler_exp_control(
     slog::debug!(log, "control, waiting"; "from" => sender.name, "to" => receiver.name);
 
     // wait for 60s
-    std::thread::sleep(std::time::Duration::from_secs(60));
+    std::thread::sleep(std::time::Duration::from_secs(180));
 
     slog::debug!(log, "control, getting files"; "from" => sender.name, "to" => receiver.name);
 
@@ -413,14 +429,16 @@ pub fn get_file(ssh: &Session, remote_path: &Path, local_path: &Path) -> Result<
     Ok(())
 }
 
-pub fn reset(sender: &Node, receiver: &Node, log: &slog::Logger)  {
+pub fn reset(sender: &Node, receiver: &Node, log: &slog::Logger) {
     let sender_ssh = sender.ssh;
     pkill(sender_ssh, "udping_client", &log);
     pkill(sender_ssh, "iperf", &log);
     pkill(sender_ssh, "bmon", &log);
     sender_ssh.cmd("sudo pkill -9 inbox").unwrap_or_default();
     sender_ssh.cmd("sudo pkill -9 nimbus").unwrap_or_default();
-    sender_ssh.cmd(&format!("sudo tc qdisc del dev {} root", sender.iface)).unwrap_or_default();
+    sender_ssh
+        .cmd(&format!("sudo tc qdisc del dev {} root", sender.iface))
+        .unwrap_or_default();
     let receiver_ssh = receiver.ssh;
     pkill(receiver_ssh, "udping_server", &log);
     pkill(receiver_ssh, "iperf", &log);
