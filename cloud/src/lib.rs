@@ -58,9 +58,18 @@ pub fn setup_netns(log: &slog::Logger, sender: &Node) -> Result<(), Error> {
 }
 
 pub fn cleanup_netns(log: &slog::Logger, sender: &Node) -> Result<(), Error> {
-    sender.ssh.cmd("sudo ip netns del BUNDLER_NS")?;
-    sender.ssh.cmd("sudo ip link del dev br0")?;
-    sender.ssh.cmd("sudo ip link del dev veth0")?;
+    sender
+        .ssh
+        .cmd("sudo ip netns del BUNDLER_NS")
+        .unwrap_or_default();
+    sender
+        .ssh
+        .cmd("sudo ip link del dev br0")
+        .unwrap_or_default();
+    sender
+        .ssh
+        .cmd("sudo ip link del dev veth0")
+        .unwrap_or_default();
     sender
         .ssh
         .cmd("sudo bash -c \"iptables -F && iptables -t nat -F && iptables -X\"")?;
@@ -138,18 +147,6 @@ pub fn bundler_exp_iperf(
     let udping_sender_receiver = format!("cd ~/tools/udping && screen -d -m bash -c \"./target/debug/udping_client -c {} -p 5999 > {}/udping_receiver.out 2> {}/udping_receiver.out\"", receiver.ip, sender_home, sender_home);
     slog::debug!(log, "starting udping");
     sender.ssh.cmd(&udping_sender_receiver).map(|_| ())?;
-    // bmon receiver
-    slog::debug!(log, "starting bmon");
-    receiver
-        .ssh
-        .cmd(&format!(
-            "screen -d -m bash -c \"stdbuf -o0 bmon -p {} -b -o format:fmt='\\$(element:name) \\$(attr:rxrate:bytes)\n' > {}/bmon.out\"",
-            receiver.iface, receiver_home
-        ))
-        .map(|_| ())?;
-
-    // wait to start
-    std::thread::sleep(std::time::Duration::from_secs(5));
 
     // 2x iperf sender
     let iperf_cmd = format!(
@@ -166,8 +163,19 @@ pub fn bundler_exp_iperf(
     slog::debug!(log, "starting iperf sender 2"; "cmd" => &iperf_cmd);
     sender.ssh.cmd(&iperf_cmd).map(|_| ())?;
 
-    // wait for 90s
-    std::thread::sleep(std::time::Duration::from_secs(180));
+    std::thread::sleep(std::time::Duration::from_secs(15));
+
+    // bmon receiver
+    slog::debug!(log, "starting bmon");
+    receiver
+        .ssh
+        .cmd(&format!(
+            "screen -d -m bash -c \"stdbuf -o0 bmon -p {} -b -o format:fmt='\\$(element:name) \\$(attr:rxrate:bytes)\n' > {}/bmon.out\"",
+            receiver.iface, receiver_home
+        ))
+        .map(|_| ())?;
+
+    std::thread::sleep(std::time::Duration::from_secs(165));
 
     cleanup_netns(log, sender)?;
 
@@ -239,15 +247,6 @@ pub fn nobundler_exp_iperf(
     let udping_sender_receiver = format!("cd ~/tools/udping && screen -d -m bash -c \"./target/debug/udping_client -c {} -p 5999 > {}/udping_receiver.out 2> {}/udping_receiver.out\"", receiver.ip, sender_home, sender_home);
     slog::debug!(log, "starting udping"; "from" => sender.name, "to" => receiver.name);
     sender.ssh.cmd(&udping_sender_receiver).map(|_| ())?;
-    // bmon receiver
-    slog::debug!(log, "starting bmon"; "from" => sender.name, "to" => receiver.name);
-    receiver
-        .ssh
-        .cmd(&format!(
-            "screen -d -m bash -c \"stdbuf -o0 bmon -p {} -b -o format:fmt='\\$(element:name) \\$(attr:rxrate:bytes)\n' > {}/bmon.out\"",
-            receiver.iface, receiver_home
-        ))
-        .map(|_| ())?;
 
     // wait to start
     std::thread::sleep(std::time::Duration::from_secs(5));
@@ -267,8 +266,19 @@ pub fn nobundler_exp_iperf(
     slog::debug!(log, "starting iperf sender 2"; "from" => sender.name, "to" => receiver.name, "cmd" => &iperf_cmd);
     sender.ssh.cmd(&iperf_cmd).map(|_| ())?;
 
-    // wait for 90s
-    std::thread::sleep(std::time::Duration::from_secs(180));
+    std::thread::sleep(std::time::Duration::from_secs(15));
+
+    // bmon receiver
+    slog::debug!(log, "starting bmon");
+    receiver
+        .ssh
+        .cmd(&format!(
+            "screen -d -m bash -c \"stdbuf -o0 bmon -p {} -b -o format:fmt='\\$(element:name) \\$(attr:rxrate:bytes)\n' > {}/bmon.out\"",
+            receiver.iface, receiver_home
+        ))
+        .map(|_| ())?;
+
+    std::thread::sleep(std::time::Duration::from_secs(165));
 
     get_file(
         sender.ssh,

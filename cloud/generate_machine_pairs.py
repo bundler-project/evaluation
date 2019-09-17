@@ -38,11 +38,11 @@ while len(all_pairs) > 0:
         src, dst = all_pairs[i]
         if not src in machines_in_use and not dst in machines_in_use:
             pair = all_pairs.pop(i)
-            if lookup_pair_rtt(src, dst):
-                pairs_done.add(pair)
-                curr_group.append(pair)
-                machines_in_use.add(src)
-                machines_in_use.add(dst)
+            #if lookup_pair_rtt(src, dst):
+            pairs_done.add(pair)
+            curr_group.append(pair)
+            machines_in_use.add(src)
+            machines_in_use.add(dst)
         else:
             i+=1
 

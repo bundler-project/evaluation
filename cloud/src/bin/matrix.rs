@@ -106,7 +106,7 @@ fn register_node(
                         ssh.cmd("cd tools && git pull origin master && git submodule update --init --recursive").map(|(_, _)| ())?;
                     }
 
-                    ssh.cmd("make -C tools")
+                    ssh.cmd("make -C tools udping/target/debug/udping_server udping/target/debug/udping_client")
                         .map(|(_, _)| ())?;
 
                     // TODO check that opt.recv_iface exists
@@ -271,17 +271,12 @@ fn main() -> Result<(), Error> {
                     let iperf_path_string = format!("./{}-{}/iperf", from, to);
                     let iperf_path = Path::new(iperf_path_string.as_str());
                     std::fs::create_dir_all(iperf_path)?;
-                    if Path::new(&iperf_path_string).join("bmon.log").exists()
-                        && Path::new(&iperf_path_string).join("udping.log").exists()
-                    {
-                        slog::info!(log, "skipping iperf experiment");
-                    } else {
-                        slog::info!(log, "running iperf experiment");
-                        cloud::nobundler_exp_iperf(&iperf_path, &log, &sender_node, &receiver_node)
-                            .context(format!("iperf experiment {} -> {}", &from, &to))?;
-                    }
-
-                    cloud::reset(&sender_node, &receiver_node, &log);
+                    //if Path::new(&iperf_path_string).join("bmon.log").exists()
+                    //    && Path::new(&iperf_path_string).join("udping.log").exists()
+                    //{
+                    //    slog::info!(log, "skipping iperf experiment");
+                    //} else {
+                    //}
 
                     let bundler_path_string = format!("./{}-{}/bundler", from, to);
                     let bundler_path = Path::new(bundler_path_string.as_str());
@@ -291,16 +286,22 @@ fn main() -> Result<(), Error> {
                     {
                         slog::info!(log, "skipping bundler experiment");
                     } else {
-                        slog::info!(log, "running bundler experiment");
-                        cloud::bundler_exp_iperf(
-                            &bundler_path,
-                            &log,
-                            &sender_node,
-                            &receiver_node,
-                            "sfq",
-                            "1000mbit",
-                        )
-                        .context(format!("bundler experiment {} -> {}", &from, &to))?;
+                        slog::info!(log, "running iperf experiment");
+                        cloud::nobundler_exp_iperf(&iperf_path, &log, &sender_node, &receiver_node)
+                            .context(format!("iperf experiment {} -> {}", &from, &to))?;
+
+                        cloud::reset(&sender_node, &receiver_node, &log);
+
+                        //slog::info!(log, "running bundler experiment");
+                        //cloud::bundler_exp_iperf(
+                        //    &bundler_path,
+                        //    &log,
+                        //    &sender_node,
+                        //    &receiver_node,
+                        //    "sfq",
+                        //    "1000mbit",
+                        //)
+                        //.context(format!("bundler experiment {} -> {}", &from, &to))?;
                     }
 
                     cloud::reset(&sender_node, &receiver_node, &log);
