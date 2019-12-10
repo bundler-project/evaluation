@@ -186,7 +186,7 @@ class PoissonTraffic(Traffic):
         self.traffic = PoissonTraffic.trafficType(**kwargs)
 
     def __str__(self):
-        return "poisson.{}.{}".format(self.traffic.distribution.split("_")[0], self.traffic.load)
+        return "poisson.{}.{}.{}".format(self.traffic.distribution.split("_")[0], self.traffic.load, self.traffic.congalg)
 
     def start_client(traffic, config, node, in_bundler, execute):
         if config['args'].verbose:
