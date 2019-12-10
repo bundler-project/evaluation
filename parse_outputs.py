@@ -77,7 +77,7 @@ def parse_ccp_logs(dirname, sample_rate, replot):
     agenda.subtask("ccp logs")
     fields = [9,17,19,27,29,35,13]
     log_header = "elapsed,rtt,zt,rout,rin,curr_rate,curr_q,elasticity2"
-    pattern = re.compile('(?P<sch>[a-z]+)_(?P<bw>[\d]+)_(?P<delay>[\d]+)/(?P<alg>[a-z_]+).(?P<args>[a-z_]+=[a-z_0-9].+)?/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/ccp.log')
+    pattern = re.compile('(?P<sch>[a-z]+)_(?P<bw>[\d]+)_(?P<delay>[\d]+)/(?P<alg>[a-z_]+).(?P<args>[a-z_]+=[a-zA-Z_0-9].+)?/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/ccp.log')
 
     g = glob.glob(dirname + "/**/ccp.log", recursive=True)
 
@@ -119,7 +119,7 @@ def parse_ccp_logs(dirname, sample_rate, replot):
 
 def parse_mahimahi_logs(dirname, sample_rate, replot):
     agenda.subtask("mahimahi logs")
-    pattern = re.compile('(?P<sch>[a-z]+)_(?P<bw>[\d]+)_(?P<delay>[\d]+)/(?P<alg>[a-zA-Z]+).(?P<args>[a-z_]+=[a-z_0-9].+)?/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/downlink.log')
+    pattern = re.compile('(?P<sch>[a-z]+)_(?P<bw>[\d]+)_(?P<delay>[\d]+)/(?P<alg>[a-zA-Z]+).(?P<args>[a-z_]+=[a-zA-Z_0-9].+)?/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/downlink.log')
     g = glob.glob(dirname + "/**/downlink.log", recursive=True)
     for exp in g:
         matches = pattern.search(exp)
@@ -134,7 +134,7 @@ def parse_mahimahi_logs(dirname, sample_rate, replot):
             subprocess.check_output("mm-graph {} {} --fake --plot-direction ingress --agg \"5000:6000=bundle,8000:9000=cross\"".format(exp, rtt), shell=True, executable="/bin/bash")
             subprocess.check_output("mv /tmp/mm-graph.tmp {}".format(exp_root), shell=True)
         else:
-            print(exp)
+            print(f"skipping {exp}, no regex match")
 
 def parse_etg_logs(dirname, replot):
     agenda.subtask("etg logs")
