@@ -305,6 +305,11 @@ if __name__ == "__main__":
                 except Exception as e:
                     warn("could not get file {}: {}".format(fname, e), exit=False)
 
+    zulip_notify("{total_exps} experiment(s) finished in **{elapsed}** seconds.".format(
+        total_exps=total_exps,
+        elapsed=round(total_elapsed,3),
+    ), dry=args.dry_run)
+
     agenda.section("parsing results")
     if not args.dry_run:
         parse_args = {'downsample' : config['args'].downsample}
@@ -314,8 +319,3 @@ if __name__ == "__main__":
             parser_args['cols'] = config['args'].cols
         parse_outputs(config['local_experiment_dir'], parse_args)
 
-    zulip_notify("{total_exps} experiment(s) finished in **{elapsed}** seconds.\nView results here: {url}".format(
-        total_exps=total_exps,
-        elapsed=round(total_elapsed,3),
-        url="http://128.52.187.169:8080/{}".format(config['experiment_name']),
-    ), dry=args.dry_run)
