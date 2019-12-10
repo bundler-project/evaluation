@@ -251,13 +251,13 @@ done
             else:
                 downlink = config['parameters']['fifo_downlink']
                 dlq = downlink['queue']
-                if 'args' in dlq:
+                if 'args' in downlink:
                     dlq_args = downlink['args']
                 else:
                     dlq_args = f"packets={buf_pkts}"
                 uplink = config['parameters']['fifo_uplink']
                 ulq = uplink['queue']
-                if 'args' in ulq:
+                if 'args' in uplink:
                     ulq_args = uplink['args']
                 else:
                     ulq_args = f"packets={buf_pkts}"
