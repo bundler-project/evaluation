@@ -55,13 +55,18 @@ class MahimahiTopo:
         agenda.task("Setting up routing tables")
         machines = self.machines
 
+        initcwnd = 10
+        if 'initcwnd' in config['topology']['sender']:
+            initcwnd = config['topology']['sender']['initcwnd']
+
         agenda.subtask("sender")
         expect(
             machines['sender'].run(
-                "ip route del {receiver}; ip route add {receiver} via {inbox} src {sender}".format(
+                "ip route del {receiver}; ip route add {receiver} via {inbox} src {sender} initcwnd {initcwnd}".format(
                     sender   = config['topology']['sender']['ifaces'][0]['addr'],
                     receiver = config['topology']['receiver']['ifaces'][0]['addr'],
-                    inbox    = config['topology']['inbox']['ifaces'][0]['addr']
+                    inbox    = config['topology']['inbox']['ifaces'][0]['addr'],
+                    initcwnd = initcwnd
                 ),
                 sudo=True
             ),
