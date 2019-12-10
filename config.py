@@ -4,6 +4,7 @@ import itertools
 import random
 import toml
 import os
+import sys
 from util import *
 
 def read_config(args):
@@ -136,5 +137,12 @@ def enumerate_experiments(config):
     exps = [dict(zip(exp_args.keys(), p)) for p in ps]
     Experiment = namedtuple("Experiment", exp_args.keys())
     exps = [Experiment(**x) for x in flatten(exps, 'alg')]
+    def skip_condition(_exp):
+        return \
+            (_exp.alg['name'] == 'nimbus' and _exp.sch == 'fifo') or\
+            (_exp.alg['name'] == 'nobundler' and _exp.sch != 'fifo')
+    #filtered_exps = [e for e in exps if not skip_condition(e)]
     random.shuffle(exps)
     return exps
+    #random.shuffle(filtered_exps)
+    #return filtered_exps
