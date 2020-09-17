@@ -1,4 +1,5 @@
-*.toml
 __pycache__/
 curr_url
 experiments
+*.toml
+!**/Cargo.toml

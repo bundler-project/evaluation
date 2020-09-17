@@ -131,7 +131,7 @@ def parse_mahimahi_logs(dirname, sample_rate, replot):
             exp_root = os.path.dirname(exp)
             if not replot and os.path.isfile(os.path.join(exp_root, 'mm-graph.tmp')):
                 continue
-            subprocess.check_output("mm-graph {} {} --fake --plot-direction ingress --agg \"5000:6000=bundle,8000:9000=cross\"".format(exp, rtt), shell=True, executable="/bin/bash")
+            subprocess.check_output("mm-graph {} {} --fake --plot-direction ingress --agg \"5002=bundle1,5003=bundle2,8000:9000=cross\"".format(exp, rtt), shell=True, executable="/bin/bash")
             subprocess.check_output("mv /tmp/mm-graph.tmp {}".format(exp_root), shell=True)
         else:
             print(f"skipping {exp}, no regex match")

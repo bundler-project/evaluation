@@ -1,8 +1,9 @@
-use failure::{format_err, Error};
+use color_eyre::eyre;
+use eyre::{eyre, Error, WrapErr};
+use openssh::Session;
 use regex::Regex;
-use std::io::prelude::*;
 use std::path::Path;
-use tsunami::Session;
+use tracing::{debug, trace};
 
 lazy_static::lazy_static! {
     static ref IFACE_REGEX: Regex = Regex::new(r"[0-9]+:\s+([a-z]+[0-9]+)\s+inet").unwrap();
@@ -19,110 +20,155 @@ pub struct Node<'a, 'b> {
 // ip netns: http://man7.org/linux/man-pages/man8/ip-netns.8.html
 // netns: https://unix.stackexchange.com/questions/156847/linux-namespace-how-to-connect-internet-in-network-namespace
 // iptables: https://unix.stackexchange.com/questions/222054/how-can-i-use-linux-as-a-gateway
-pub fn setup_netns(log: &slog::Logger, sender: &Node) -> Result<(), Error> {
-    sender.ssh.cmd("sudo ip netns add BUNDLER_NS")?;
+pub async fn setup_netns(sender: &Node<'_, '_>) -> Result<(), Error> {
     sender
         .ssh
-        .cmd("sudo ip link add veth0 type veth peer name veth1")?;
-    sender.ssh.cmd("sudo ip link set veth1 netns BUNDLER_NS")?;
+        .shell("sudo ip netns add BUNDLER_NS")
+        .status()
+        .await?;
+    sender
+        .ssh
+        .shell("sudo ip link add veth0 type veth peer name veth1")
+        .status()
+        .await?;
+    sender
+        .ssh
+        .shell("sudo ip link set veth1 netns BUNDLER_NS")
+        .status()
+        .await?;
 
-    let out = sender.ssh.cmd("sudo ip netns").map(|(x, _)| x)?;
-    slog::trace!(log, "setup netns"; "out" => out);
-
-    sender.ssh.cmd("sudo ip link add name br0 type bridge")?;
-    sender.ssh.cmd("sudo ip link set veth0 master br0")?;
-    sender.ssh.cmd("sudo ip addr add 100.64.0.1/24 dev br0")?;
-    sender.ssh.cmd("sudo ip link set br0 up")?;
-    sender.ssh.cmd("sudo ip link set veth0 up")?;
+    let out = sender.ssh.shell("sudo ip netns").output().await?;
+    let out = String::from_utf8(out.stdout)?;
+    trace!(out = ?&out, "setup netns");
 
     sender
         .ssh
-        .cmd("sudo ip netns exec BUNDLER_NS ip link set veth1 up")?;
+        .shell("sudo ip link add name br0 type bridge")
+        .status()
+        .await?;
     sender
         .ssh
-        .cmd("sudo ip netns exec BUNDLER_NS ip addr add dev veth1 100.64.0.2/24")?;
+        .shell("sudo ip link set veth0 master br0")
+        .status()
+        .await?;
     sender
         .ssh
-        .cmd("sudo ip netns exec BUNDLER_NS ip route add default via 100.64.0.1")?;
+        .shell("sudo ip addr add 100.64.0.1/24 dev br0")
+        .status()
+        .await?;
+    sender.ssh.shell("sudo ip link set br0 up").status().await?;
+    sender
+        .ssh
+        .shell("sudo ip link set veth0 up")
+        .status()
+        .await?;
 
-    sender.ssh.cmd(&format!(
-        "sudo iptables -t nat -A POSTROUTING -o {} -j MASQUERADE",
-        sender.iface
-    ))?;
-    sender.ssh.cmd(&format!(
-        "sudo iptables -A FORWARD -i veth0 -o {} -j ACCEPT",
-        sender.iface
-    ))?;
+    sender
+        .ssh
+        .shell("sudo ip netns exec BUNDLER_NS ip link set veth1 up")
+        .status()
+        .await?;
+    sender
+        .ssh
+        .shell("sudo ip netns exec BUNDLER_NS ip addr add dev veth1 100.64.0.2/24")
+        .status()
+        .await?;
+    sender
+        .ssh
+        .shell("sudo ip netns exec BUNDLER_NS ip route add default via 100.64.0.1")
+        .status()
+        .await?;
+
+    sender
+        .ssh
+        .shell(&format!(
+            "sudo iptables -t nat -A POSTROUTING -o {} -j MASQUERADE",
+            sender.iface
+        ))
+        .status()
+        .await?;
+    sender
+        .ssh
+        .shell(&format!(
+            "sudo iptables -A FORWARD -i veth0 -o {} -j ACCEPT",
+            sender.iface
+        ))
+        .status()
+        .await?;
 
     Ok(())
 }
 
-pub fn cleanup_netns(log: &slog::Logger, sender: &Node) -> Result<(), Error> {
+pub async fn cleanup_netns(sender: &Node<'_, '_>) -> Result<(), Error> {
     sender
         .ssh
-        .cmd("sudo ip netns del BUNDLER_NS")
-        .unwrap_or_default();
+        .shell("sudo ip netns del BUNDLER_NS")
+        .status()
+        .await?;
     sender
         .ssh
-        .cmd("sudo ip link del dev br0")
-        .unwrap_or_default();
+        .shell("sudo ip link del dev br0")
+        .status()
+        .await?;
     sender
         .ssh
-        .cmd("sudo ip link del dev veth0")
-        .unwrap_or_default();
+        .shell("sudo ip link del dev veth0")
+        .status()
+        .await?;
     sender
         .ssh
-        .cmd("sudo bash -c \"iptables -F && iptables -t nat -F && iptables -X\"")?;
+        .shell("sudo bash -c \"iptables -F && iptables -t nat -F && iptables -X\"")
+        .status()
+        .await?;
 
-    let out = sender.ssh.cmd("sudo ip netns").map(|(x, _)| x)?;
-    slog::trace!(log, "cleanup netns"; "out" => out);
+    let out = sender.ssh.shell("sudo ip netns").output().await?;
+    let out = String::from_utf8(out.stdout)?;
+    trace!(out = ?&out, "cleanup netns");
 
     Ok(())
 }
 
-pub fn bundler_exp_iperf(
+pub async fn bundler_exp_iperf(
     out_dir: &Path,
-    log: &slog::Logger,
-    sender: &Node,
-    receiver: &Node,
+    sender: &Node<'_, '_>,
+    receiver: &Node<'_, '_>,
     inbox_qtype: &str,
     inbox_qlen: &str,
 ) -> Result<(), Error> {
-    let sender_home = get_home(sender.ssh, sender.user)?;
-    let receiver_home = get_home(receiver.ssh, receiver.user)?;
+    let sender_home = get_home(sender.ssh, sender.user).await?;
+    let receiver_home = get_home(receiver.ssh, receiver.user).await?;
 
-    cleanup_netns(log, sender).unwrap_or_default();
-    setup_netns(log, sender)?;
+    cleanup_netns(sender).await?;
+    setup_netns(sender).await?;
 
     // start outbox
-    receiver.ssh.cmd(&format!("cd ~/tools/bundler && sudo screen -d -m bash -c \"./target/debug/outbox --filter=\\\"dst portrange 5000-6000\\\" --iface={} --inbox {}:28316 --sample_rate=64 > {}/outbox.out 2> {}/outbox.out\"",
+    receiver.ssh.shell(&format!("cd ~/tools/bundler && sudo screen -d -m bash -c \"./target/debug/outbox --filter=\\\"dst portrange 5000-6000\\\" --iface={} --inbox {}:28316 --sample_rate=64 > {}/outbox.out 2> {}/outbox.out\"",
                 receiver.iface,
                 sender.ip,
                 receiver_home,
                 receiver_home,
             ))
-            .map(|(_, _)| ())?;
-
+        .status().await?;
     // start inbox
     sender.ssh
-            .cmd(&format!("cd ~/tools/bundler && sudo screen -d -m bash -c \"./target/debug/inbox --iface={} --port 28316 --sample_rate=128 --qtype={} --buffer={} > {}/inbox.out 2> {}/inbox.out\"",
+            .shell(&format!("cd ~/tools/bundler && sudo screen -d -m bash -c \"./target/debug/inbox --iface={} --port 28316 --sample_rate=128 --qtype={} --buffer={} > {}/inbox.out 2> {}/inbox.out\"",
                 sender.iface,
                 inbox_qtype,
                 inbox_qlen,
                 sender_home,
                 sender_home,
             ))
-            .map(|(_,_)| ())?;
+        .status().await?;
 
     // start nimbus
     // wait for inbox to get ready
-    std::thread::sleep(std::time::Duration::from_secs(5));
+    tokio::time::delay_for(tokio::time::Duration::from_secs(5)).await;
 
     // start nimbus
-    sender.ssh.cmd(&format!("cd ~/tools/nimbus && sudo screen -d -m bash -c \"./target/debug/nimbus --ipc=unix --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=Delay --uest=875000000 --bundler_qlen_alpha=100 --bundler_qlen_beta=10000 --bundler_qlen=1000 > {}/ccp.out 2> {}/ccp.out\"",
+    sender.ssh.shell(&format!("cd ~/tools/nimbus && sudo screen -d -m bash -c \"./target/debug/nimbus --ipc=unix --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=Delay --uest=875000000 --bundler_qlen_alpha=100 --bundler_qlen_beta=10000 --bundler_qlen=1000 > {}/ccp.out 2> {}/ccp.out\"",
         sender_home,
         sender_home,
-    )).map(|(_, _)| ())?;
+    )).status().await?;
 
     //sender.ssh.cmd(&format!("cd ~/tools/ccp_copa && sudo screen -d -m bash -c \"./target/debug/copa --ipc=unix --default_delta=0.125 --delta_mode=NoTCP > {}/ccp.out 2> {}/ccp.out\"",
     //    sender_home,
@@ -130,23 +176,27 @@ pub fn bundler_exp_iperf(
     //))?;
 
     // let everything settle
-    std::thread::sleep(std::time::Duration::from_secs(5));
+    tokio::time::delay_for(tokio::time::Duration::from_secs(5)).await;
 
     // iperf receiver
     receiver
         .ssh
-        .cmd("screen -d -m bash -c \"iperf -s -p 5001 > ~/iperf_server.out 2> ~/iperf_server.out\"")
-        .map(|_| ())?;
+        .shell(
+            "screen -d -m bash -c \"iperf -s -p 5001 > ~/iperf_server.out 2> ~/iperf_server.out\"",
+        )
+        .status()
+        .await?;
     // udping receiver
     receiver
         .ssh
-        .cmd("cd ~/tools/udping && screen -d -m ./target/debug/udping_server -p 5999")
-        .map(|_| ())?;
+        .shell("cd ~/tools/udping && screen -d -m ./target/debug/udping_server -p 5999")
+        .status()
+        .await?;
 
     // udping sender -> receiver
     let udping_sender_receiver = format!("cd ~/tools/udping && screen -d -m bash -c \"./target/debug/udping_client -c {} -p 5999 > {}/udping_receiver.out 2> {}/udping_receiver.out\"", receiver.ip, sender_home, sender_home);
-    slog::debug!(log, "starting udping");
-    sender.ssh.cmd(&udping_sender_receiver).map(|_| ())?;
+    debug!("starting udping");
+    sender.ssh.shell(&udping_sender_receiver).status().await?;
 
     // 2x iperf sender
     let iperf_cmd = format!(
@@ -156,100 +206,111 @@ pub fn bundler_exp_iperf(
         sender_home,
     );
 
-    slog::debug!(log, "starting iperf sender 1"; "cmd" => &iperf_cmd);
-    sender.ssh.cmd(&iperf_cmd).map(|_| ())?;
+    debug!(cmd = ?&iperf_cmd, "starting iperf sender 1");
+    sender.ssh.shell(&iperf_cmd).status().await?;
 
     let iperf_cmd = format!("screen -d -m bash -c \"sudo ip netns exec BUNDLER_NS iperf -c {} -p 5001 -t 150 -i 1 -P 10 > {}/iperf_client.out 2> {}/iperf_client.out\"", receiver.ip, sender_home, sender_home);
-    slog::debug!(log, "starting iperf sender 2"; "cmd" => &iperf_cmd);
-    sender.ssh.cmd(&iperf_cmd).map(|_| ())?;
+    debug!(cmd = ?&iperf_cmd, "starting iperf sender 2");
+    sender.ssh.shell(&iperf_cmd).status().await?;
 
-    std::thread::sleep(std::time::Duration::from_secs(15));
+    tokio::time::delay_for(tokio::time::Duration::from_secs(15)).await;
 
     // bmon receiver
-    slog::debug!(log, "starting bmon");
+    debug!("starting bmon");
     receiver
         .ssh
-        .cmd(&format!(
+        .shell(&format!(
             "screen -d -m bash -c \"stdbuf -o0 bmon -p {} -b -o format:fmt='\\$(element:name) \\$(attr:rxrate:bytes)\n' > {}/bmon.out\"",
             receiver.iface, receiver_home
         ))
-        .map(|_| ())?;
+        .status().await?;
 
-    std::thread::sleep(std::time::Duration::from_secs(165));
+    tokio::time::delay_for(tokio::time::Duration::from_secs(165)).await;
 
-    cleanup_netns(log, sender)?;
+    cleanup_netns(sender).await?;
 
     get_file(
         sender.ssh,
         Path::new(&format!("{}/iperf_client.out", sender_home)),
         &out_dir.join("./iperf_client.log"),
-    )?;
+    )
+    .await?;
     get_file(
         sender.ssh,
         Path::new(&format!("{}/iperf_client_1.out", sender_home)),
         &out_dir.join("./iperf_client_1.log"),
-    )?;
+    )
+    .await?;
     get_file(
         sender.ssh,
         Path::new(&format!("{}/udping_receiver.out", sender_home)),
         &out_dir.join("./udping.log"),
-    )?;
+    )
+    .await?;
     get_file(
         sender.ssh,
         Path::new(&format!("{}/inbox.out", sender_home)),
         &out_dir.join("./inbox.log"),
-    )?;
+    )
+    .await?;
     get_file(
         sender.ssh,
         Path::new(&format!("{}/ccp.out", sender_home)),
         &out_dir.join("./nimbus.log"),
-    )?;
+    )
+    .await?;
     get_file(
         receiver.ssh,
         Path::new(&format!("{}/iperf_server.out", receiver_home)),
         &out_dir.join("./iperf_server.log"),
-    )?;
+    )
+    .await?;
     get_file(
         receiver.ssh,
         Path::new(&format!("{}/bmon.out", receiver_home)),
         &out_dir.join("./bmon.log"),
-    )?;
+    )
+    .await?;
     get_file(
         receiver.ssh,
         Path::new(&format!("{}/outbox.out", receiver_home)),
         &out_dir.join("./outbox.log"),
-    )?;
+    )
+    .await?;
 
     Ok(())
 }
 
-pub fn nobundler_exp_iperf(
+pub async fn nobundler_exp_iperf(
     out_dir: &Path,
-    log: &slog::Logger,
-    sender: &Node,
-    receiver: &Node,
+    sender: &Node<'_, '_>,
+    receiver: &Node<'_, '_>,
 ) -> Result<(), Error> {
-    let sender_home = get_home(sender.ssh, sender.user)?;
-    let receiver_home = get_home(receiver.ssh, receiver.user)?;
+    let sender_home = get_home(sender.ssh, sender.user).await?;
+    let receiver_home = get_home(receiver.ssh, receiver.user).await?;
 
     // iperf receiver
     receiver
         .ssh
-        .cmd("screen -d -m bash -c \"iperf -s -p 5001 > ~/iperf_server.out 2> ~/iperf_server.out\"")
-        .map(|_| ())?;
+        .shell(
+            "screen -d -m bash -c \"iperf -s -p 5001 > ~/iperf_server.out 2> ~/iperf_server.out\"",
+        )
+        .status()
+        .await?;
     // udping receiver
     receiver
         .ssh
-        .cmd("cd ~/tools/udping && screen -d -m ./target/debug/udping_server -p 5999")
-        .map(|_| ())?;
+        .shell("cd ~/tools/udping && screen -d -m ./target/debug/udping_server -p 5999")
+        .status()
+        .await?;
 
     // udping sender -> receiver
     let udping_sender_receiver = format!("cd ~/tools/udping && screen -d -m bash -c \"./target/debug/udping_client -c {} -p 5999 > {}/udping_receiver.out 2> {}/udping_receiver.out\"", receiver.ip, sender_home, sender_home);
-    slog::debug!(log, "starting udping"; "from" => sender.name, "to" => receiver.name);
-    sender.ssh.cmd(&udping_sender_receiver).map(|_| ())?;
+    debug!("starting udping");
+    sender.ssh.shell(&udping_sender_receiver).status().await?;
 
     // wait to start
-    std::thread::sleep(std::time::Duration::from_secs(5));
+    tokio::time::delay_for(tokio::time::Duration::from_secs(5)).await;
 
     // 2x iperf sender
     let iperf_cmd = format!(
@@ -259,112 +320,118 @@ pub fn nobundler_exp_iperf(
         sender_home,
     );
 
-    slog::debug!(log, "starting iperf sender 1"; "from" => sender.name, "to" => receiver.name, "cmd" => &iperf_cmd);
-    sender.ssh.cmd(&iperf_cmd).map(|_| ())?;
+    debug!(cmd = ?&iperf_cmd, "starting iperf sender 1");
+    sender.ssh.shell(&iperf_cmd).status().await?;
 
     let iperf_cmd = format!("screen -d -m bash -c \"iperf -c {} -p 5001 -t 150 -i 1 -P 10 > {}/iperf_client.out 2> {}/iperf_client.out\"", receiver.ip, sender_home, sender_home);
-    slog::debug!(log, "starting iperf sender 2"; "from" => sender.name, "to" => receiver.name, "cmd" => &iperf_cmd);
-    sender.ssh.cmd(&iperf_cmd).map(|_| ())?;
+    debug!(cmd = ?&iperf_cmd, "starting iperf sender 2");
+    sender.ssh.shell(&iperf_cmd).status().await?;
 
-    std::thread::sleep(std::time::Duration::from_secs(15));
+    tokio::time::delay_for(tokio::time::Duration::from_secs(15)).await;
 
     // bmon receiver
-    slog::debug!(log, "starting bmon");
+    debug!("starting bmon");
     receiver
         .ssh
-        .cmd(&format!(
+        .shell(&format!(
             "screen -d -m bash -c \"stdbuf -o0 bmon -p {} -b -o format:fmt='\\$(element:name) \\$(attr:rxrate:bytes)\n' > {}/bmon.out\"",
             receiver.iface, receiver_home
         ))
-        .map(|_| ())?;
+        .status().await?;
 
-    std::thread::sleep(std::time::Duration::from_secs(165));
+    tokio::time::delay_for(tokio::time::Duration::from_secs(165)).await;
 
     get_file(
         sender.ssh,
         Path::new(&format!("{}/iperf_client.out", sender_home)),
         &out_dir.join("./iperf_client.log"),
-    )?;
+    )
+    .await?;
     get_file(
         sender.ssh,
         Path::new(&format!("{}/iperf_client_1.out", sender_home)),
         &out_dir.join("./iperf_client_1.log"),
-    )?;
+    )
+    .await?;
     get_file(
         sender.ssh,
         Path::new(&format!("{}/udping_receiver.out", sender_home)),
         &out_dir.join("./udping.log"),
-    )?;
+    )
+    .await?;
     get_file(
         receiver.ssh,
         Path::new(&format!("{}/iperf_server.out", receiver_home)),
         &out_dir.join("./iperf_server.log"),
-    )?;
+    )
+    .await?;
     get_file(
         receiver.ssh,
         Path::new(&format!("{}/bmon.out", receiver_home)),
         &out_dir.join("./bmon.log"),
-    )?;
+    )
+    .await?;
 
     Ok(())
 }
 
-pub fn nobundler_exp_control(
+pub async fn nobundler_exp_control(
     out_dir: &Path,
-    log: &slog::Logger,
-    sender: &Node,
-    receiver: &Node,
+    sender: &Node<'_, '_>,
+    receiver: &Node<'_, '_>,
 ) -> Result<(), Error> {
-    let sender_home = get_home(sender.ssh, sender.user)?;
-    let receiver_home = get_home(receiver.ssh, receiver.user)?;
+    let sender_home = get_home(sender.ssh, sender.user).await?;
+    let receiver_home = get_home(receiver.ssh, receiver.user).await?;
 
     // udping receiver
     receiver
         .ssh
-        .cmd("cd ~/tools/udping && screen -d -m ./target/debug/udping_server -p 5999")
-        .map(|_| ())?;
+        .shell("cd ~/tools/udping && screen -d -m ./target/debug/udping_server -p 5999")
+        .status()
+        .await?;
 
     // udping sender -> receiver
     let udping_sender_receiver = format!("cd ~/tools/udping && screen -d -m bash -c \"./target/debug/udping_client -c {} -p 5999 > {}/udping_receiver.out 2> {}/udping_receiver.out\"", receiver.ip, sender_home, sender_home);
-    sender.ssh.cmd(&udping_sender_receiver).map(|_| ())?;
+    sender.ssh.shell(&udping_sender_receiver).status().await?;
     // bmon receiver
     receiver
         .ssh
-        .cmd(&format!(
+        .shell(&format!(
             "screen -d -m bash -c \"stdbuf -o0 bmon -p {} -b -o format:fmt='\\$(element:name) \\$(attr:rxrate:bytes)\n' > {}/bmon.out 2> {}/bmon.out\"",
             receiver.iface, receiver_home, receiver_home
         ))
-        .map(|_| ())?;
+        .status().await?;
 
-    slog::debug!(log, "control, waiting"; "from" => sender.name, "to" => receiver.name);
+    debug!("control, waiting");
 
-    // wait for 60s
-    std::thread::sleep(std::time::Duration::from_secs(180));
+    tokio::time::delay_for(tokio::time::Duration::from_secs(180)).await;
 
-    slog::debug!(log, "control, getting files"; "from" => sender.name, "to" => receiver.name);
+    debug!("control, getting files");
 
     get_file(
         sender.ssh,
         Path::new(&format!("{}/udping_receiver.out", sender_home)),
         &out_dir.join("./udping.log"),
-    )?;
+    )
+    .await?;
     get_file(
         receiver.ssh,
         Path::new(&format!("{}/bmon.out", receiver_home)),
         &out_dir.join("./bmon.log"),
-    )?;
+    )
+    .await?;
 
     Ok(())
 }
 
-pub fn get_home(ssh: &Session, user: &str) -> Result<String, Error> {
-    ssh.cmd(&format!("echo ~{}", user))
-        .map(|(out, _)| out.trim().to_string())
+pub async fn get_home(ssh: &Session, user: &str) -> Result<String, Error> {
+    let out = ssh.shell(&format!("echo ~{}", user)).output().await?;
+    let out = String::from_utf8(out.stdout)?;
+    Ok(out.trim().to_string())
 }
 
-pub fn iface_name(ip_addr_out: (String, String)) -> Result<String, Error> {
+pub fn iface_name(ip_addr_out: String) -> Result<String, Error> {
     ip_addr_out
-        .0
         .lines()
         .filter_map(|l| Some(IFACE_REGEX.captures(l)?.get(1)?.as_str().to_string()))
         .filter(|l| match l.as_str() {
@@ -372,99 +439,116 @@ pub fn iface_name(ip_addr_out: (String, String)) -> Result<String, Error> {
             _ => true,
         })
         .next()
-        .ok_or_else(|| format_err!("No matching interfaces"))
+        .ok_or_else(|| eyre!("No matching interfaces"))
 }
 
-pub fn get_iface_name(node: &Session) -> Result<String, Error> {
-    node.cmd("bash -c \"ip -o addr | awk '{print $2}'\"")
-        .and_then(iface_name)
+pub async fn get_iface_name(node: &Session) -> Result<String, Error> {
+    let out = node
+        .shell("bash -c \"ip -o addr | awk '{print $2}'\"")
+        .output()
+        .await?;
+    iface_name(String::from_utf8(out.stdout)?)
 }
 
-pub fn install_basic_packages(ssh: &Session) -> Result<(), Error> {
+pub async fn install_basic_packages(ssh: &Session) -> Result<(), Error> {
     let mut count = 0;
     loop {
         count += 1;
-        let res = (|| -> Result<(), Error> {
-            ssh.cmd("sudo apt update")
-                .map(|(_, _)| ())
-                .map_err(|e| e.context("apt update failed"))?;
-            ssh.cmd("sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y build-essential bmon iperf coreutils git automake autoconf libtool")
-                .map(|(_, _)| ())
-                .map_err(|e| e.context("apt install failed"))?;
+        async fn do_apt(ssh: &Session) -> Result<(), Error> {
+            ssh.shell("sudo apt update")
+                .status()
+                .await
+                .wrap_err("apt update failed")?;
+            ssh.shell("sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y build-essential bmon iperf coreutils git automake autoconf libtool")
+                .status()
+                .await
+                .wrap_err("apt install failed")?;
             Ok(())
-        })();
-
-        if let Ok(_) = res {
-            return res;
-        } else {
-            println!("apt failed: {:?}", res);
         }
 
-        if count > 15 {
-            return res;
+        match do_apt(ssh).await {
+            x @ Ok(_) => return x,
+            x @ Err(_) if count > 15 => return x,
+            Err(e) => debug!(err = ?e, "apt failed"),
         }
 
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        tokio::time::delay_for(tokio::time::Duration::from_secs(100)).await;
     }
 }
 
-pub fn get_tools(ssh: &Session) -> Result<(), Error> {
-    ssh.cmd("sudo sysctl -w net.ipv4.ip_forward=1")
-        .map(|(_, _)| ())?;
-    ssh.cmd("sudo sysctl -w net.ipv4.tcp_wmem=\"4096000 50331648 50331648\"")
-        .map(|(_, _)| ())?;
-    ssh.cmd("sudo sysctl -w net.ipv4.tcp_rmem=\"4096000 50331648 50331648\"")
-        .map(|(_, _)| ())?;
+pub async fn get_tools(ssh: &Session) -> Result<(), Error> {
+    ssh.shell("sudo sysctl -w net.ipv4.ip_forward=1")
+        .status()
+        .await?;
+    ssh.shell("sudo sysctl -w net.ipv4.tcp_wmem=\"4096000 50331648 50331648\"")
+        .status()
+        .await?;
+    ssh.shell("sudo sysctl -w net.ipv4.tcp_rmem=\"4096000 50331648 50331648\"")
+        .status()
+        .await?;
     if let Err(_) = ssh
-        .cmd("git clone --recursive https://github.com/bundler-project/tools")
-        .map(|(_, _)| ())
+        .shell("git clone --recursive https://github.com/bundler-project/tools")
+        .status()
+        .await
     {
-        ssh.cmd("ls ~/tools").map(|(_, _)| ())?;
+        ssh.shell("ls ~/tools")
+            .status()
+            .await
+            .wrap_err("could not find tools directory")?;
     }
-    ssh.cmd("cd ~/tools/bundler && git checkout no_dst_ip")
-        .map(|(_, _)| ())?;
+    ssh.shell("cd ~/tools/bundler && git checkout master")
+        .status()
+        .await?;
 
-    ssh.cmd("make -C tools").map(|(_, _)| ())
-}
-
-pub fn get_file(ssh: &Session, remote_path: &Path, local_path: &Path) -> Result<(), Error> {
-    ssh.scp_recv(std::path::Path::new(remote_path))
-        .map_err(Error::from)
-        .and_then(|(mut channel, _)| {
-            let mut out = std::fs::File::create(local_path)?;
-            std::io::copy(&mut channel, &mut out)?;
-            Ok(())
-        })
-        .map_err(|e| e.context(format!("scp {:?}", remote_path)))?;
+    ssh.shell("make -C tools").status().await?;
     Ok(())
 }
 
-pub fn reset(sender: &Node, receiver: &Node, log: &slog::Logger) {
-    let sender_ssh = sender.ssh;
-    pkill(sender_ssh, "udping_client", &log);
-    pkill(sender_ssh, "iperf", &log);
-    pkill(sender_ssh, "bmon", &log);
-    sender_ssh.cmd("sudo pkill -9 inbox").unwrap_or_default();
-    sender_ssh.cmd("sudo pkill -9 nimbus").unwrap_or_default();
-    sender_ssh
-        .cmd(&format!("sudo tc qdisc del dev {} root", sender.iface))
-        .unwrap_or_default();
-    let receiver_ssh = receiver.ssh;
-    pkill(receiver_ssh, "udping_server", &log);
-    pkill(receiver_ssh, "iperf", &log);
-    pkill(receiver_ssh, "bmon", &log);
-    receiver_ssh.cmd("sudo pkill -9 outbox").unwrap_or_default();
+pub async fn get_file(ssh: &Session, remote_path: &Path, local_path: &Path) -> Result<(), Error> {
+    let mut sftp = ssh.sftp();
+    let mut remote_file = sftp
+        .read_from(std::path::Path::new(remote_path))
+        .await
+        .map_err(Error::from)?;
+    let mut out = tokio::fs::File::create(local_path).await?;
+    tokio::io::copy(&mut remote_file, &mut out).await?;
+    Ok(())
 }
 
-pub fn pkill(ssh: &Session, procname: &str, _log: &slog::Logger) {
+pub async fn reset(sender: &Node<'_, '_>, receiver: &Node<'_, '_>) {
+    let sender_ssh = sender.ssh;
+    pkill(sender_ssh, "udping_client").await;
+    pkill(sender_ssh, "iperf").await;
+    pkill(sender_ssh, "bmon").await;
+    sender_ssh
+        .shell("sudo pkill -9 inbox")
+        .status()
+        .await
+        .unwrap();
+    sender_ssh
+        .shell("sudo pkill -9 nimbus")
+        .status()
+        .await
+        .unwrap();
+    sender_ssh
+        .shell(&format!("sudo tc qdisc del dev {} root", sender.iface))
+        .status()
+        .await
+        .unwrap();
+    let receiver_ssh = receiver.ssh;
+    pkill(receiver_ssh, "udping_server").await;
+    pkill(receiver_ssh, "iperf").await;
+    pkill(receiver_ssh, "bmon").await;
+    receiver_ssh
+        .shell("sudo pkill -9 outbox")
+        .status()
+        .await
+        .unwrap();
+}
+
+pub async fn pkill(ssh: &Session, procname: &str) {
     let cmd = format!("pkill -9 {}", procname);
-    ssh.cmd(&cmd).unwrap_or_default();
-    //if let Err(e) = ssh.cmd(&cmd) {
-    //    slog::warn!(log, "pkill failed";
-    //        "cmd" => procname,
-    //        "error" => ?e,
-    //    );
-    //}
+    ssh.shell(&cmd).status().await.unwrap();
 }
 
 #[cfg(test)]

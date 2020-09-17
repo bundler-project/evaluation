@@ -228,8 +228,8 @@ def start_tcpdump(config, machines):
     outbox = machines['outbox']
     inbox_pcap = os.path.join(config['iteration_dir'], 'inbox.pcap')
     outbox_pcap = os.path.join(config['iteration_dir'], 'outbox.pcap')
-    inbox.run(f"tcpdump -n -s128 -w {inbox_pcap} portrange 5000-6000", sudo=True, background=True)
-    outbox.run(f"tcpdump -n -s128 -w {outbox_pcap} portrange 5000-6000", sudo=True, background=True)
+    inbox.run(f"tcpdump -i {config['topology']['inbox']['ifaces'][1]['dev']} -n -s128 -w {inbox_pcap} \"src portrange {config['parameters']['bg_port_start']}-{config['parameters']['bg_port_end']}\"", sudo=True, background=True)
+    outbox.run(f"tcpdump -i {config['topology']['outbox']['ifaces'][0]['dev']} -n -s128 -w {outbox_pcap} \"src portrange {config['parameters']['bg_port_start']}-{config['parameters']['bg_port_end']}\"", sudo=True, background=True)
 
     config['iteration_outputs'].append((inbox, inbox_pcap))
     config['iteration_outputs'].append((outbox, outbox_pcap))

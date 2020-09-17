@@ -10,6 +10,8 @@ if len(sys.argv) > 1:
         start,end = [int(x)*1000 for x in tr.split(":")]
         cross_traffic_pattern.append((start,end,name))
     print_head = eval(sys.argv[2])
+else:
+    print_head = True
 
 
 def flds(line):
