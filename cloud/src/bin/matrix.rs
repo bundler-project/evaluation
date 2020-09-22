@@ -191,6 +191,7 @@ async fn main() -> Result<(), Error> {
         }
     }
 
+    info!("starting machines");
     let mut aws_launcher = aws::Launcher::default();
     let mut az_launcher = azure::Launcher::default();
     let (aws_res, az_res, bare_launchers) = futures_util::join!(
@@ -214,7 +215,9 @@ async fn main() -> Result<(), Error> {
     az_res?;
     let bare_launchers: Result<Vec<_>, _> = bare_launchers.into_iter().collect();
     let bare_launchers = bare_launchers?;
+    info!("started machines");
 
+    info!("connecting to machines");
     let (aws_vms, az_vms, bare_vms) = futures_util::join!(
         aws_launcher.connect_all(),
         az_launcher.connect_all(),
@@ -228,6 +231,10 @@ async fn main() -> Result<(), Error> {
         .chain(az_vms?)
         .map(|(k, v)| (k, Arc::new(Mutex::new(v))))
         .collect();
+    info!("connected to machines");
+
+    wait_for_continue();
+
     let vms = Arc::new(Mutex::new(vms));
     let machine_info = Arc::new(Mutex::new(machine_info));
     futures_util::future::join_all(pairs.into_iter().map(|(from, to): (String, String)| {
@@ -335,6 +342,7 @@ async fn main() -> Result<(), Error> {
             {
                 info!("skipping bundler experiment");
             } else {
+                info!("skipping bundler experiment");
                 //info!("running bundler experiment");
                 //cloud::bundler_exp_iperf(
                 //    &bundler_path,
@@ -356,7 +364,7 @@ async fn main() -> Result<(), Error> {
     }))
     .await;
 
-    debug!("collecting logs");
+    info!("collecting logs");
 
     std::process::Command::new("python3")
         .arg("parse_udping.py")
@@ -382,4 +390,13 @@ fn matrix(vms: &HashMap<String, Machine>) -> impl Iterator<Item = (String, Strin
     let names2 = names.clone();
 
     names.into_iter().cartesian_product(names2)
+}
+
+fn wait_for_continue() {
+    warn!("pausing for manual instance inspection, press enter to continue");
+
+    use std::io::prelude::*;
+    let stdin = std::io::stdin();
+    let mut iterator = stdin.lock().lines();
+    iterator.next().unwrap().unwrap();
 }
