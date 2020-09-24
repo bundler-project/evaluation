@@ -193,6 +193,7 @@ async fn main() -> Result<(), Error> {
 
     info!("starting machines");
     let mut aws_launcher = aws::Launcher::default();
+    aws_launcher.open_ports();
     let mut az_launcher = azure::Launcher::default();
     let (aws_res, az_res, bare_launchers) = futures_util::join!(
         aws_launcher
@@ -312,6 +313,7 @@ async fn main() -> Result<(), Error> {
             } else {
                 info!("running control experiment");
                 cloud::nobundler_exp_control(&control_path, &sender_node, &receiver_node)
+                    .instrument(tracing::info_span!("control_exp"))
                     .await
                     .wrap_err(eyre!("control experiment {} -> {}", &from, &to))?;
                 info!("control experiment done");
@@ -328,6 +330,7 @@ async fn main() -> Result<(), Error> {
             } else {
                 info!("running iperf experiment");
                 cloud::nobundler_exp_iperf(&iperf_path, &sender_node, &receiver_node)
+                    .instrument(tracing::info_span!("nobundler_iperf"))
                     .await
                     .wrap_err(eyre!("iperf experiment {} -> {}", &from, &to))?;
                 info!("iperf experiment done");
@@ -363,6 +366,10 @@ async fn main() -> Result<(), Error> {
         .instrument(tracing::info_span!("pair", from = ?&f, to = ?&t))
     }))
     .await;
+
+    info!("terminate instances");
+    aws_launcher.terminate_all().await?;
+    az_launcher.terminate_all().await?;
 
     info!("collecting logs");
 
