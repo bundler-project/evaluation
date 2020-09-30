@@ -3,7 +3,7 @@ use eyre::{eyre, Error, WrapErr};
 use openssh::Session;
 use regex::Regex;
 use std::path::Path;
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 
 lazy_static::lazy_static! {
     static ref IFACE_REGEX: Regex = Regex::new(r"[0-9]+:\s+([a-z]+[0-9]+)\s+inet").unwrap();
@@ -459,7 +459,7 @@ pub async fn install_basic_packages(ssh: &Session) -> Result<(), Error> {
                 .status()
                 .await
                 .wrap_err("apt update failed")?;
-            ssh.shell("sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y build-essential bmon iperf coreutils git automake autoconf libtool")
+            ssh.shell("sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y build-essential bmon iperf curl coreutils git automake autoconf libtool")
                 .status()
                 .await
                 .wrap_err("apt install failed")?;
@@ -477,30 +477,123 @@ pub async fn install_basic_packages(ssh: &Session) -> Result<(), Error> {
 }
 
 pub async fn get_tools(ssh: &Session) -> Result<(), Error> {
-    ssh.shell("sudo sysctl -w net.ipv4.ip_forward=1")
+    eyre::ensure!(
+        ssh.shell("sudo sysctl -w net.ipv4.ip_forward=1")
+            .status()
+            .await?
+            .success(),
+        "ip_forward"
+    );
+    eyre::ensure!(
+        ssh.shell("sudo sysctl -w net.ipv4.tcp_wmem=\"4096000 50331648 50331648\"")
+            .status()
+            .await?
+            .success(),
+        "tcp_wmem"
+    );
+    eyre::ensure!(
+        ssh.shell("sudo sysctl -w net.ipv4.tcp_rmem=\"4096000 50331648 50331648\"")
+            .status()
+            .await?
+            .success(),
+        "tcp_rmem"
+    );
+
+    if !ssh
+        .shell("ls scamper-cvs-20191102b")
         .status()
-        .await?;
-    ssh.shell("sudo sysctl -w net.ipv4.tcp_wmem=\"4096000 50331648 50331648\"")
-        .status()
-        .await?;
-    ssh.shell("sudo sysctl -w net.ipv4.tcp_rmem=\"4096000 50331648 50331648\"")
-        .status()
-        .await?;
-    if let Err(_) = ssh
-        .shell("git clone --recursive https://github.com/bundler-project/tools")
+        .await?
+        .success()
+    {
+        trace!("getting scamper");
+        match ssh
+            .command("curl")
+            .arg("-O")
+            .arg(
+                "https://www.caida.org/tools/measurement/scamper/code/scamper-cvs-20191102b.tar.gz",
+            )
+            .status()
+            .await
+        {
+            Err(e) => {
+                warn!(err = ?e, "curl scamper failed");
+                Err(e)?;
+            }
+            Ok(st) => eyre::ensure!(st.success(), "curl scamper"),
+        }
+
+        match ssh
+            .command("tar")
+            .arg("-xzf")
+            .arg("scamper-cvs-20191102b.tar.gz")
+            .status()
+            .await
+        {
+            Err(e) => {
+                warn!(err = ?e,  "untar scamper failed");
+                Err(e)?;
+            }
+            Ok(st) => eyre::ensure!(st.success(), "untar scamper"),
+        }
+
+        match ssh
+            .shell("cd scamper-cvs-20191102b && ./configure && make && sudo make install")
+            .status()
+            .await
+        {
+            Err(e) => {
+                warn!(err = ?e, "compile/install scamper failed");
+                Err(e)?;
+            }
+            Ok(st) => eyre::ensure!(st.success(), "compile scamper"),
+        }
+    } else {
+        trace!("scamper installed");
+    }
+
+    if !ssh.shell("ls tools").status().await?.success() {
+        trace!("cloning tools repo");
+        match ssh
+            .shell("git clone --recursive https://github.com/bundler-project/tools")
+            .status()
+            .await
+        {
+            Err(e) => {
+                warn!(err = ?e, "clone tools failed");
+                ssh.shell("ls ~/tools")
+                    .status()
+                    .await
+                    .wrap_err("could not find tools directory")?;
+                Err(e)?;
+            }
+            Ok(st) => eyre::ensure!(st.success(), "clone tools"),
+        }
+    } else {
+        trace!("tools repo already cloned");
+    }
+
+    trace!("checkout latest tools commit");
+    match ssh
+        .shell("cd ~/tools/bundler && git fetch && git checkout master && git merge origin/master")
         .status()
         .await
     {
-        ssh.shell("ls ~/tools")
-            .status()
-            .await
-            .wrap_err("could not find tools directory")?;
+        Err(e) => {
+            warn!(err = ?e, "checkout master");
+            Err(e)?;
+        }
+        Ok(st) => eyre::ensure!(st.success(), "checking master"),
     }
-    ssh.shell("cd ~/tools/bundler && git checkout master")
-        .status()
-        .await?;
 
-    ssh.shell("make -C tools").status().await?;
+    trace!("make tools");
+    match ssh.shell("make -C tools").status().await {
+        Err(e) => {
+            warn!(err = ?e, "make tools");
+            Err(e)?;
+        }
+        Ok(st) => eyre::ensure!(st.success(), "make tools"),
+    }
+
     Ok(())
 }
 

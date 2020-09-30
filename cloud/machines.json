@@ -1,6 +1,28 @@
-[ 
-    {
-        "from": {"Aws": {"region": "us-west-1"}}, 
-        "to": {"Aws": {"region": "eu-west-1"}}
-    } 
+[
+    {"Baremetal": {
+        "name": "gcp_socal", "ip": "35.215.72.82", "user": "akshayn", "iface": "ens4"
+    }},
+    {"Baremetal": {
+        "name": "gcp_finland", "ip": "35.217.60.85", "user": "akshayn", "iface": "ens4"
+    }},
+    {"Baremetal": {
+        "name": "gcp_iowa", "ip": "35.208.147.115", "user": "akshayn", "iface": "ens4"
+    }},
+    {"Baremetal": {
+        "name": "gcp_belgium", "ip": "35.210.191.91", "user": "akshayn", "iface": "ens4"
+    }},
+    {"Baremetal": {
+        "name": "gcp_tokyo", "ip": "35.210.191.91", "user": "akshayn", "iface": "ens4"
+    }},
+    {"Baremetal": {
+        "name": "vultr_tokyo", "ip": "167.179.69.246", "user": "ubuntu", "iface": "ens3"
+    }},
+    {"Baremetal": {
+        "name": "vultr_singapore", "ip": "45.76.148.123", "user": "ubuntu", "iface": "ens3"
+    }},
+    {"Baremetal": {
+        "name": "vultr_sydney", "ip": "139.180.173.52", "user": "ubuntu", "iface": "ens3"
+    }},
+    {"Aws": {"region": "eu-central-1"}},
+    {"Aws": {"region": "ap-southeast-2"}}
 ]
