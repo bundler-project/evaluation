@@ -18,21 +18,23 @@ def build_pairs(ms):
     #       This algorithm was designed for round-robin tournaments and thus
     #       assumes x playing y is the same as y playing x
     opp = [(r[i], l[i]) for i in range(mid)]
-    return pairs + opp
+    return pairs, opp
 
 def schedule(n):
-    schedule = []
+    schedule_a = []
+    schedule_b = []
     # list of numbers 2,...,n 
     # this is the set that will rotate, 1 is fixed at the front
     ms = deque(range(2,n+1))
 
     # there are n-1 total rounds
     for rnd in range(n-1):
-        pairs = build_pairs(ms)
-        schedule.append(pairs)
+        pairs, opp = build_pairs(ms)
+        schedule_a.append(pairs)
+        schedule_b.append(opp)
         ms.rotate(1)
 
-    return schedule
+    return schedule_a, schedule_b
 
 ###############################################################################
 # Helper functions
@@ -71,18 +73,16 @@ machines = {i+1: m for i,m in zip(range(len(machines)), machines)}
 n = len(machines.keys())
 print(f"==> Found {n} machines in {filename}\n")
 
-s = schedule(n)
+sa, sb = schedule(n)
 
 # sanity check that all pairs have been used in the schedule
-flat = set(sum(s, []))
+flat = set(sum(sa, [])) | set(sum(sb, []))
 all_pairs = set(permutations(machines.keys(), 2))
 assert(flat == all_pairs)
 
-# write the schedule to phase files
-phase = 1
-for pairs in s:
-    print(f"Phase {phase}: {len(pairs)} pairs")
-    with open(f"phase_{phase}.json", 'w') as f:
+def write_phase(name, pairs):
+    print(f"{name}: {len(pairs)} pairs")
+    with open(name, 'w') as f:
         objs = []
         for (src,dst) in pairs:
             if not already_done(machines[src], machines[dst]):
@@ -91,4 +91,12 @@ for pairs in s:
         if len(objs) == 0:
             print("> All pairs in Phase {phase} already completed, file will be empty.")
         f.write(json.dumps(objs))
+
+# write the schedule to phase files
+phase = 1
+for i in range(len(sa)):
+    pairs = sa[i]
+    opp = sb[i]
+    write_phase(f"phase_{phase}a.json", pairs)
+    write_phase(f"phase_{phase}b.json", opp)
     phase += 1
