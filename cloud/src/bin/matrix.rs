@@ -75,12 +75,16 @@ fn check_path(from: &str, to: &str) -> bool {
         return true;
     }
 
-    if Path::new(&control_path_string).join("bmon.log").exists()
-        && Path::new(&control_path_string).join("udping.log").exists()
-        && Path::new(&iperf_path_string).join("bmon.log").exists()
-        && Path::new(&iperf_path_string).join("udping.log").exists()
-        && Path::new(&bundler_path_string).join("bmon.log").exists()
-        && Path::new(&bundler_path_string).join("udping.log").exists()
+    if Path::new(&control_path_string).join("bmon.log.gz").exists()
+        && Path::new(&control_path_string)
+            .join("udping.log.gz")
+            .exists()
+        && Path::new(&iperf_path_string).join("bmon.log.gz").exists()
+        && Path::new(&iperf_path_string).join("udping.log.gz").exists()
+        && Path::new(&bundler_path_string).join("bmon.log.gz").exists()
+        && Path::new(&bundler_path_string)
+            .join("udping.log.gz")
+            .exists()
     {
         return false;
     } else {
@@ -265,135 +269,164 @@ async fn main() -> Result<(), Error> {
 
         let vms = Arc::new(Mutex::new(vms));
         let machine_info = Arc::new(Mutex::new(machine_info));
-        futures_util::future::join_all(pairs.into_iter().map(|(from, to): (String, String)| {
-            let f = from.clone();
-            let t = to.clone();
-            let vms = vms.clone();
-            let machine_info = machine_info.clone();
-            async move {
-                let (sender_lock, receiver_lock) = {
-                    let vm_guard = vms.lock().await;
-                    let sender_lock = vm_guard.get(&from).expect("vms get from").clone();
-                    let receiver_lock = vm_guard.get(&to).expect("vms get to").clone();
-                    (sender_lock, receiver_lock)
-                };
+        let rs = futures_util::future::join_all(pairs.into_iter().map(
+            |(from, to): (String, String)| {
+                let f = from.clone();
+                let t = to.clone();
+                let vms = vms.clone();
+                let machine_info = machine_info.clone();
+                async move {
+                    let (sender_lock, receiver_lock) = {
+                        let vm_guard = vms.lock().await;
+                        let sender_lock = vm_guard.get(&from).expect("vms get from").clone();
+                        let receiver_lock = vm_guard.get(&to).expect("vms get to").clone();
+                        (sender_lock, receiver_lock)
+                    };
 
-                let (sender, receiver) = if from < to {
-                    info!("waiting for lock");
-                    let sender = sender_lock.lock().await;
-                    let receiver = receiver_lock.lock().await;
-                    (sender, receiver)
-                } else if from > to {
-                    info!("waiting for lock");
-                    let receiver = receiver_lock.lock().await;
-                    let sender = sender_lock.lock().await;
-                    (sender, receiver)
-                } else {
-                    warn!(from = ?&from, to = ?&to, "from == to?");
-                    return Ok::<_, Error>(());
-                };
+                    let (sender, receiver) = if from < to {
+                        info!("waiting for lock");
+                        let sender = sender_lock.lock().await;
+                        let receiver = receiver_lock.lock().await;
+                        (sender, receiver)
+                    } else if from > to {
+                        info!("waiting for lock");
+                        let receiver = receiver_lock.lock().await;
+                        let sender = sender_lock.lock().await;
+                        (sender, receiver)
+                    } else {
+                        warn!(from = ?&from, to = ?&to, "from == to?");
+                        return Ok::<_, Error>(());
+                    };
 
-                info!("locked pair");
+                    info!("locked pair");
 
-                let (sender_user, sender_iface, receiver_user, receiver_iface) = {
-                    let machine_info_guard = machine_info.lock().await;
-                    let (sender_user, sender_iface) = machine_info_guard
-                        .get(&from)
-                        .map(|(user, iface)| (user.clone(), iface.clone()))
-                        .unwrap();
+                    let (sender_user, sender_iface, receiver_user, receiver_iface) = {
+                        let machine_info_guard = machine_info.lock().await;
+                        let (sender_user, sender_iface) = machine_info_guard
+                            .get(&from)
+                            .map(|(user, iface)| (user.clone(), iface.clone()))
+                            .unwrap();
 
-                    let (receiver_user, receiver_iface) = machine_info_guard
-                        .get(&to)
-                        .map(|(user, iface)| (user.clone(), iface.clone()))
-                        .unwrap();
+                        let (receiver_user, receiver_iface) = machine_info_guard
+                            .get(&to)
+                            .map(|(user, iface)| (user.clone(), iface.clone()))
+                            .unwrap();
 
-                    (sender_user, sender_iface, receiver_user, receiver_iface)
-                };
+                        (sender_user, sender_iface, receiver_user, receiver_iface)
+                    };
 
-                info!("got machine info");
+                    info!("got machine info");
 
-                let sender_node = cloud::Node {
-                    ssh: &sender.ssh,
-                    name: &from,
-                    ip: &sender.public_ip,
-                    iface: &sender_iface,
-                    user: &sender_user,
-                };
+                    let sender_node = cloud::Node {
+                        ssh: &sender.ssh,
+                        name: &from,
+                        ip: &sender.public_ip,
+                        iface: &sender_iface,
+                        user: &sender_user,
+                    };
 
-                let receiver_node = cloud::Node {
-                    ssh: &receiver.ssh,
-                    name: &to,
-                    ip: &receiver.public_ip,
-                    iface: &receiver_iface,
-                    user: &receiver_user,
-                };
+                    let receiver_node = cloud::Node {
+                        ssh: &receiver.ssh,
+                        name: &to,
+                        ip: &receiver.public_ip,
+                        iface: &receiver_iface,
+                        user: &receiver_user,
+                    };
 
-                cloud::reset(&sender_node, &receiver_node).await;
-                let control_path_string = format!("./{}-{}/control", from, to);
-                let control_path = Path::new(control_path_string.as_str());
-                std::fs::create_dir_all(control_path)?;
+                    cloud::reset(&sender_node, &receiver_node).await;
+                    let scamper_path_string = format!("./{}-{}/", from, to);
+                    let scamper_path = Path::new(scamper_path_string.as_str());
+                    std::fs::create_dir_all(scamper_path)?;
+                    if Path::new(&scamper_path_string)
+                        .join(format!(
+                            "{}-{}.warts.gz",
+                            sender.public_ip, receiver.public_ip
+                        ))
+                        .exists()
+                    {
+                        info!("scamper done, skipping");
+                    } else {
+                        info!("running scamper");
+                        cloud::do_traceroute(&scamper_path, &sender_node, &receiver_node).await?;
+                        info!("done running scamper");
+                    }
 
-                if Path::new(&control_path_string).join("bmon.log").exists()
-                    && Path::new(&control_path_string).join("udping.log").exists()
-                {
-                    info!("skipping control experiment");
-                } else {
-                    info!("running control experiment");
-                    cloud::nobundler_exp_control(&control_path, &sender_node, &receiver_node)
-                        .instrument(tracing::info_span!("control_exp"))
+                    let control_path_string = format!("./{}-{}/control", from, to);
+                    let control_path = Path::new(control_path_string.as_str());
+                    std::fs::create_dir_all(control_path)?;
+
+                    if Path::new(&control_path_string).join("bmon.log.gz").exists()
+                        && Path::new(&control_path_string)
+                            .join("udping.log.gz")
+                            .exists()
+                    {
+                        info!("skipping control experiment");
+                    } else {
+                        info!("running control experiment");
+                        cloud::nobundler_exp_control(&control_path, &sender_node, &receiver_node)
+                            .instrument(tracing::info_span!("control_exp"))
+                            .await
+                            .wrap_err(eyre!("control experiment {} -> {}", &from, &to))?;
+                        info!("control experiment done");
+                        cloud::reset(&sender_node, &receiver_node).await;
+                    }
+
+                    let iperf_path_string = format!("./{}-{}/iperf", from, to);
+                    let iperf_path = Path::new(iperf_path_string.as_str());
+                    std::fs::create_dir_all(iperf_path)?;
+                    if Path::new(&iperf_path_string).join("bmon.log.gz").exists()
+                        && Path::new(&iperf_path_string).join("udping.log.gz").exists()
+                    {
+                        info!("skipping iperf experiment");
+                    } else {
+                        info!("running iperf experiment");
+                        cloud::nobundler_exp_iperf(&iperf_path, &sender_node, &receiver_node)
+                            .instrument(tracing::info_span!("nobundler_iperf"))
+                            .await
+                            .wrap_err(eyre!("iperf experiment {} -> {}", &from, &to))?;
+                        info!("iperf experiment done");
+                        cloud::reset(&sender_node, &receiver_node).await;
+                    }
+
+                    let bundler_path_string = format!("./{}-{}/bundler", from, to);
+                    let bundler_path = Path::new(bundler_path_string.as_str());
+                    std::fs::create_dir_all(bundler_path)?;
+                    if Path::new(&bundler_path_string).join("bmon.log.gz").exists()
+                        && Path::new(&bundler_path_string)
+                            .join("udping.log.gz")
+                            .exists()
+                    {
+                        info!("skipping bundler experiment");
+                    } else {
+                        //info!("skipping bundler experiment");
+                        info!("running bundler experiment");
+                        cloud::bundler_exp_iperf(
+                            &bundler_path,
+                            &sender_node,
+                            &receiver_node,
+                            "sfq",
+                            "1000mbit",
+                        )
                         .await
-                        .wrap_err(eyre!("control experiment {} -> {}", &from, &to))?;
-                    info!("control experiment done");
-                    cloud::reset(&sender_node, &receiver_node).await;
-                }
+                        .wrap_err(eyre!(
+                            "bundler experiment {} -> {}",
+                            &from,
+                            &to
+                        ))?;
+                        info!("bundler experiment done");
+                        cloud::reset(&sender_node, &receiver_node).await;
+                    }
 
-                let iperf_path_string = format!("./{}-{}/iperf", from, to);
-                let iperf_path = Path::new(iperf_path_string.as_str());
-                std::fs::create_dir_all(iperf_path)?;
-                if Path::new(&iperf_path_string).join("bmon.log").exists()
-                    && Path::new(&iperf_path_string).join("udping.log").exists()
-                {
-                    info!("skipping iperf experiment");
-                } else {
-                    info!("running iperf experiment");
-                    cloud::nobundler_exp_iperf(&iperf_path, &sender_node, &receiver_node)
-                        .instrument(tracing::info_span!("nobundler_iperf"))
-                        .await
-                        .wrap_err(eyre!("iperf experiment {} -> {}", &from, &to))?;
-                    info!("iperf experiment done");
-                    cloud::reset(&sender_node, &receiver_node).await;
+                    info!("done");
+                    Ok(())
                 }
-
-                let bundler_path_string = format!("./{}-{}/bundler", from, to);
-                let bundler_path = Path::new(bundler_path_string.as_str());
-                std::fs::create_dir_all(bundler_path)?;
-                if Path::new(&bundler_path_string).join("bmon.log").exists()
-                    && Path::new(&bundler_path_string).join("udping.log").exists()
-                {
-                    info!("skipping bundler experiment");
-                } else {
-                    info!("skipping bundler experiment");
-                    //info!("running bundler experiment");
-                    //cloud::bundler_exp_iperf(
-                    //    &bundler_path,
-                    //    &log,
-                    //    &sender_node,
-                    //    &receiver_node,
-                    //    "sfq",
-                    //    "1000mbit",
-                    //).await
-                    //.wrap_err(eyre!("bundler experiment {} -> {}", &from, &to))?;
-                    //info!("bundler experiment done");
-                    cloud::reset(&sender_node, &receiver_node).await;
-                }
-
-                info!("done");
-                Ok(())
-            }
-            .instrument(tracing::info_span!("pair", from = ?&f, to = ?&t))
-        }))
+                .instrument(tracing::info_span!("pair", from = ?&f, to = ?&t))
+            },
+        ))
         .await;
 
+        let rs: Result<_, _> = rs.into_iter().collect();
+        rs?;
         Ok::<_, Error>(())
     }
     .await;

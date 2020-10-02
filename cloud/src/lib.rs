@@ -424,6 +424,56 @@ pub async fn nobundler_exp_control(
     Ok(())
 }
 
+pub async fn do_traceroute(
+    out_dir: &Path,
+    sender: &Node<'_, '_>,
+    receiver: &Node<'_, '_>,
+) -> Result<(), Error> {
+    let sender_home = get_home(sender.ssh, sender.user).await?;
+    let outf = format!("{}-{}.warts", sender.ip, receiver.ip);
+    let local = out_dir.join(&outf);
+
+    debug!(outf = ?&outf, "starting scamper");
+    eyre::ensure!(
+        sender
+            .ssh
+            .shell(format!("echo {} > ips.txt", receiver.ip))
+            .status()
+            .await
+            .wrap_err("Error running scamper")?
+            .success(),
+        "write scamper ips.txt"
+    );
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let cmd = format!(
+        "sudo scamper -c \"tracelb -f 5\" -p 200 -C {} -O warts -o {} ips.txt",
+        now, outf
+    );
+
+    eyre::ensure!(
+        sender
+            .ssh
+            .shell(cmd)
+            .status()
+            .await
+            .wrap_err("Error running scamper")?
+            .success(),
+        "running scamper failed"
+    );
+
+    let remote = Path::new(&sender_home).join(&outf);
+    debug!(outf = ?&outf, remote = ?&remote, "scamper done");
+
+    get_file(sender.ssh, &remote, &local)
+        .await
+        .wrap_err("Error getting warts file")?;
+    Ok(())
+}
+
 pub async fn get_home(ssh: &Session, user: &str) -> Result<String, Error> {
     let out = ssh.shell(&format!("echo ~{}", user)).output().await?;
     let out = String::from_utf8(out.stdout)?;
@@ -574,7 +624,7 @@ pub async fn get_tools(ssh: &Session) -> Result<(), Error> {
 
     trace!("checkout latest tools commit");
     match ssh
-        .shell("cd ~/tools/bundler && git fetch && git checkout master && git merge origin/master")
+        .shell("cd ~/tools && git fetch && git checkout master && git merge origin/master && git submodule update --init --recursive")
         .status()
         .await
     {
@@ -598,11 +648,68 @@ pub async fn get_tools(ssh: &Session) -> Result<(), Error> {
 }
 
 pub async fn get_file(ssh: &Session, remote_path: &Path, local_path: &Path) -> Result<(), Error> {
-    let mut sftp = ssh.sftp();
-    let mut remote_file = sftp
-        .read_from(std::path::Path::new(remote_path))
+    eyre::ensure!(
+        ssh.shell(format!(
+            "ls {}",
+            remote_path
+                .to_str()
+                .ok_or_else(|| eyre!("remote path is not valid string: {:?}", remote_path))?,
+        ))
+        .status()
         .await
-        .map_err(Error::from)?;
+        .unwrap()
+        .success(),
+        "remote file does not exist"
+    );
+
+    eyre::ensure!(
+        ssh.shell(format!(
+            "gzip -f {}",
+            remote_path
+                .to_str()
+                .ok_or_else(|| eyre!("remote path is not valid string: {:?}", remote_path))?,
+        ))
+        .status()
+        .await
+        .unwrap()
+        .success(),
+        eyre!(
+            "gzip {}",
+            remote_path
+                .to_str()
+                .ok_or_else(|| eyre!("remote path is not valid string: {:?}", remote_path))?
+        )
+    );
+
+    let ext: &str = remote_path
+        .extension()
+        .ok_or_else(|| {
+            eyre!(
+                "get_file only works with files that have some extension: {:?}",
+                remote_path
+            )
+        })?
+        .to_str()
+        .ok_or_else(|| eyre!("extension not valid string: {:?}", remote_path))?;
+    let ext = format!("{}.gz", ext);
+
+    let remote_path = remote_path.with_extension(ext);
+
+    let mut sftp = ssh.sftp();
+    let mut remote_file = sftp.read_from(&remote_path).await.map_err(Error::from)?;
+
+    let ext: &str = local_path
+        .extension()
+        .ok_or_else(|| {
+            eyre!(
+                "get_file only works with files that have some extension: {:?}",
+                local_path
+            )
+        })?
+        .to_str()
+        .ok_or_else(|| eyre!("extension not valid string: {:?}", local_path))?;
+    let ext = format!("{}.gz", ext);
+    let local_path = local_path.with_extension(ext);
     let mut out = tokio::fs::File::create(local_path).await?;
     tokio::io::copy(&mut remote_file, &mut out).await?;
     Ok(())

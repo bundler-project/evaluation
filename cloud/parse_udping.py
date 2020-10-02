@@ -1,7 +1,7 @@
 import os, sys
 from collections import defaultdict
 import numpy as np
-
+import gzip
 
 MEAN_DIFF_THRESHOLD = 5.0
 
@@ -13,8 +13,9 @@ def parse_udping(fname):
         print(f"error: missing {fname}")
         return
     port_pings = defaultdict(list)
-    with open(fname) as f:
-        for l in f.readlines():
+    with gzip.open(fname) as f:
+        for l in f:
+            l = l.decode('utf-8')
             try:
                 if 'Ping' in l:
                     sp = l.strip().split(" ")
@@ -23,7 +24,7 @@ def parse_udping(fname):
                     port_pings[srcport].append(rtt)
             except Exception as e:
                 continue
-        return(port_pings)
+    return(port_pings)
 
 # expected format:
 # [iface] [rxrate_bytes]
@@ -32,9 +33,9 @@ def parse_bmon(fname):
         print(f"error: missing {fname}")
         return
     rates = []
-    with open(fname) as f:
+    with gzip.open(fname) as f:
         try:
-            for l in f.readlines():
+            for l in f:
                 _, rxrate = l.strip().split()
                 rxrate = float(rxrate) * 8
                 rates.append(rxrate)
@@ -60,15 +61,15 @@ if __name__ == "__main__":
     paths = os.listdir(results_dir)
     for path in paths:
         sp = path.split('-')
-        if not os.path.isdir(path) or len(sp) != 2:
+        if not os.path.isdir(path) or len(sp) != 2 or 'ssh' in path:
             continue
         src, dst = sp
-        control_pings = parse_udping(os.path.join(results_dir, path, 'control', 'udping.log'))
-        iperf_pings = parse_udping(os.path.join(results_dir, path, 'iperf', 'udping.log'))
-        bundler_pings = parse_udping(os.path.join(results_dir, path, 'bundler', 'udping.log'))
+        control_pings = parse_udping(os.path.join(results_dir, path, 'control', 'udping.log.gz'))
+        iperf_pings = parse_udping(os.path.join(results_dir, path, 'iperf', 'udping.log.gz'))
+        bundler_pings = parse_udping(os.path.join(results_dir, path, 'bundler', 'udping.log.gz'))
 
-        iperf_rates = parse_bmon(os.path.join(results_dir, path, 'iperf', 'bmon.log'))
-        bundler_rates = parse_bmon(os.path.join(results_dir, path, 'bundler', 'bmon.log'))
+        iperf_rates = parse_bmon(os.path.join(results_dir, path, 'iperf', 'bmon.log.gz'))
+        bundler_rates = parse_bmon(os.path.join(results_dir, path, 'bundler', 'bmon.log.gz'))
 
         if control_pings is None:
             continue
