@@ -9,7 +9,7 @@
         "name": "gcp_iowa", "ip": "35.208.147.115", "user": "akshayn", "iface": "ens4"
     }},
     {"Baremetal": {
-        "name": "gcp_belgium", "ip": "35.210.191.91", "user": "akshayn", "iface": "ens4"
+        "name": "gcp_frankfurt", "ip": "35.207.103.197", "user": "akshayn", "iface": "ens4"
     }},
     {"Baremetal": {
         "name": "gcp_tokyo", "ip": "35.210.191.91", "user": "akshayn", "iface": "ens4"
@@ -22,7 +22,5 @@
     }},
     {"Baremetal": {
         "name": "vultr_sydney", "ip": "139.180.173.52", "user": "ubuntu", "iface": "ens3"
-    }},
-    {"Aws": {"region": "eu-central-1"}},
-    {"Aws": {"region": "ap-southeast-2"}}
+    }}
 ]
