@@ -2,9 +2,9 @@ import os, sys
 from collections import defaultdict
 import numpy as np
 import gzip
+from dateutil import parser
 
 MEAN_DIFF_THRESHOLD = 5.0
-
 
 # expected format
 # Sep 04 20:55:50.139 INFO Ping response, time: [rtt], local: 0.0.0.0:[srcport], from: ...
@@ -13,17 +13,23 @@ def parse_udping(fname):
         print(f"error: missing {fname}")
         return
     port_pings = defaultdict(list)
+    min_time = None
     with gzip.open(fname) as f:
         for l in f:
             l = l.decode('utf-8')
             try:
                 if 'Ping' in l:
                     sp = l.strip().split(" ")
+                    time = parser.parse(' '.join(sp[:3])).timestamp()
+                    if min_time is None or time < min_time:
+                        min_time = time
                     rtt = float(sp[7].replace(",",""))
                     _, srcport = sp[9].replace(",","").split(":")
-                    port_pings[srcport].append(rtt)
+                    port_pings[srcport].append((time, rtt))
             except Exception as e:
                 continue
+    for port in port_pings:
+        port_pings[port] = [(t - min_time, r) for t, r in port_pings[port]]
     return(port_pings)
 
 # expected format:
@@ -50,7 +56,7 @@ if __name__ == "__main__":
 
     results_dir = sys.argv[1]
     ping = open('udping_results.out', 'w')
-    ping.write("src dst port Latency rtt\n")
+    ping.write("src dst time port Latency rtt\n")
 
     bmon = open('bmon_results.out', 'w')
     bmon.write("src dst Throughput bw\n")
@@ -77,8 +83,8 @@ if __name__ == "__main__":
         for srcport in control_pings.keys():
             try:
                 control = control_pings[srcport]
-                for r in control:
-                    ping.write(f"{src} {dst} {srcport} control {r}\n")
+                for time, r in control:
+                    ping.write(f"{src} {dst} {time} {srcport} control {r}\n")
             except:
                 continue
 
@@ -87,15 +93,15 @@ if __name__ == "__main__":
 
             try:
                 iperf = iperf_pings[srcport]
-                for r in iperf:
-                    ping.write(f"{src} {dst} {srcport} iperf {r}\n")
+                for time, r in iperf:
+                    ping.write(f"{src} {dst} {time} {srcport} iperf {r}\n")
             except:
                 continue
 
             try:
                 bundler = bundler_pings[srcport]
-                for r in bundler:
-                    ping.write(f"{src} {dst} {srcport} bundler {r}\n")
+                for time, r in bundler:
+                    ping.write(f"{src} {dst} {time} {srcport} bundler {r}\n")
             except:
                 continue
 
