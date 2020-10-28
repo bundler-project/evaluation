@@ -1,6 +1,6 @@
 agenda==1.0.2
 asn1crypto==0.24.0
-cryptography==2.7
+cryptography==3.2
 fabric==2.4.0
 paramiko==2.6.0
 toml==0.10.0
