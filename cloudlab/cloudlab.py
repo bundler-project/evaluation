@@ -9,18 +9,6 @@ from selenium.webdriver.chrome.options import Options
 import subprocess
 from pyspin.spin import make_spin, Default
 
-@make_spin(Default, "Waiting to load cluster selection...")
-def cluster_select(driver):
-    while True:
-        try:
-            time.sleep(1)
-            driver.execute_script("$(\"[value='Cloudlab Utah']\")[1].click()")
-            time.sleep(1)
-            driver.execute_script("$(\"[value='OneLab']\")[3].click()")
-            return
-        except:
-            time.sleep(2)
-
 @make_spin(Default, "Cluster launching...")
 def launch_wait(driver):
     while True:
@@ -66,7 +54,18 @@ def login(driver, username, pw):
         driver.find_element_by_name("password").send_keys(pw)
         driver.find_element_by_name("login").click()
     except:
+        agenda.failure("Could not attempt login")
         return
+
+    time.sleep(2)
+    try:
+        # if things worked, this will throw an exception
+        driver.find_element_by_name("login")
+    except:
+        return
+
+    agenda.failure("Login attempt failed, check username/password")
+    raise Exception("Login failed")
 
 def launch(driver):
     agenda.task("Launch new cloudlab experiment")
@@ -76,7 +75,7 @@ def launch(driver):
     time.sleep(2)
     driver.find_element_by_id("change-profile").click()
     time.sleep(2)
-    driver.find_element_by_name("bundler").click()
+    driver.find_element_by_name("bundler-local").click()
     time.sleep(2)
     driver.find_element_by_id("showtopo_select").click()
 
@@ -86,7 +85,6 @@ def launch(driver):
     time.sleep(2)
     driver.execute_script("$(\"[href='#next']\").click()")
 
-    cluster_select(driver)
     agenda.subprompt("Press [Enter] to verify cluster availability>")
     input()
 
@@ -108,7 +106,7 @@ def launch(driver):
 
     return get_machines_from_experiment(driver)
 
-def check_exisiting_experiment(driver):
+def check_existing_experiment(driver):
     agenda.task("Check for existing experiment")
     driver.get("https://www.cloudlab.us/user-dashboard.php#experiments")
     table = None
@@ -138,22 +136,22 @@ cloudlab_conn_rgx = re.compile(r"ssh -p (?P<port>[0-9]+) (?P<user>[a-z0-9]+)@(?P
 # sender, inbox, outbox, receiver
 def make_cloudlab_topology(config, headless=False):
     agenda.section("Setup Cloudlab topology")
+    agenda.subtask(f"headless: {headless}")
     driver = init_driver(
         config['topology']['cloudlab']['username'],
         config['topology']['cloudlab']['password'],
         headless=headless,
     )
 
-    machines = check_exisiting_experiment(driver)
+    machines = check_existing_experiment(driver)
     if machines is None:
         machines = launch(driver)
 
-    senders = [cloudlab_conn_rgx.match(m).groupdict() for m in machines if 'cloudlab.us' in m]
-    receivers = [cloudlab_conn_rgx.match(m).groupdict() for m in machines if 'onelab.eu' in m]
-    config['topology']['sender'] = senders[0]
-    config['topology']['inbox'] = senders[1]
-    config['topology']['outbox'] = receivers[0]
-    config['topology']['receiver'] = receivers[0] # can't set up the forwarding without VPN
+    machines = [cloudlab_conn_rgx.match(m).groupdict() for m in machines if 'cloudlab.us' in m]
+    config['topology']['sender'] = machines[0]
+    config['topology']['inbox'] = machines[1]
+    config['topology']['outbox'] = machines[2]
+    config['topology']['receiver'] = machines[2]
     return config
 
 ip_addr_rgx = re.compile(r"\w+:\W*(?P<dev>\w+).*inet (?P<addr>[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)")
@@ -165,9 +163,11 @@ def get_interfaces(config, machines):
             continue
         agenda.task(machines[m].addr)
         conn = machines[m]
-        ifaces = conn.run("ip -4 -o addr").stdout.strip().split("\n")
-        ifaces = [ip_addr_rgx.match(i) for i in ifaces]
+        ifaces_raw = conn.run("ip -4 -o addr").stdout.strip().split("\n")
+        ifaces = [ip_addr_rgx.match(i) for i in ifaces_raw]
         ifaces = [i.groupdict() for i in ifaces if i is not None and i["dev"] != "lo"]
+        if len(ifaces) == 0:
+            raise Exception(f"Could not find ifaces on {conn.addr}: {ifaces_raw}")
         config['topology'][m]['ifaces'] = ifaces
 
     return config

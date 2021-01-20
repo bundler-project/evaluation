@@ -89,7 +89,7 @@ def check_config(config):
     for traffic_type in ['bundle_traffic', 'cross_traffic']:
         for traffic in config['experiment'][traffic_type]:
             for t in traffic:
-                print(t)
+                print('traffic:', t)
                 assert t['source'] in sources, "{} traffic source must be one of ({})".format(traffic_type, "|".join(sources))
                 assert 'start_delay' in t, "{} missing start_delay (int)".format(traffic_type)
                 if t['source'] == 'iperf':

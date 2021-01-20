@@ -286,7 +286,7 @@ done
 
 class CloudlabTopo:
     def __init__(self, config):
-        config = make_cloudlab_topology(config, headless=True)
+        config = make_cloudlab_topology(config, headless=False)
         config['topology']['inbox']['listen_port'] = 28316
         conns, machines = create_ssh_connections(config)
         self.conns = conns
