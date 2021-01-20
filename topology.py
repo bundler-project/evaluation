@@ -304,13 +304,20 @@ class CloudlabTopo:
         config = self.config
         machines = self.machines
 
+        def get_addr(cfg, node_key):
+            ifaces = cfg['topology'][node_key]['ifaces']
+            for i in ifaces:
+                if i['dev'] != 'lo':
+                    return i['addr']
+            raise Exception(f"no valid interface found on {node_key}")
+
         agenda.subtask("sender")
         expect(
             machines['sender'].run(
                 "ip route del {receiver}; ip route add {receiver} via {inbox} src {sender}".format(
-                    sender   = config['topology']['sender']['ifaces'][0]['addr'],
-                    receiver = config['topology']['receiver']['ifaces'][0]['addr'],
-                    inbox    = config['topology']['inbox']['ifaces'][1]['addr']
+                    sender   = get_addr(config, 'sender'),
+                    receiver = get_addr(config, 'receiver'),
+                    inbox    = get_addr(config, 'inbox')
                 ),
                 sudo=True
             ),
