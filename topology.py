@@ -30,10 +30,10 @@ def create_ssh_connections(config):
     return (conns, machines)
 
 def get_inbox_binary(config):
-   return os.path.join(config['structure']['bundler_root'], "bundler/target/debug/inbox")
+   return os.path.join(config['structure']['bundler_root'], "bundler/target/release/inbox")
 
 def get_outbox_binary(config):
-   return os.path.join(config['structure']['bundler_root'], "bundler/target/debug/outbox")
+   return os.path.join(config['structure']['bundler_root'], "bundler/target/release/outbox")
 
 def outbox_output_location(config):
     return os.path.join(config['iteration_dir'], 'outbox.log')

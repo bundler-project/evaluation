@@ -1,6 +1,6 @@
 all: iperf/src/iperf \
 	empirical-traffic-gen/bin/etgClient empirical-traffic-gen/bin/etgServer \
-	bundler/target/debug/inbox bundler/target/debug/outbox \
+	bundler/target/release/inbox bundler/target/release/outbox \
 	mahimahi/src/frontend/mm-delay mahimahi/src/frontend/mm-link
 
 iperf/src/iperf: iperf/src/*.c
@@ -16,7 +16,7 @@ rustup.sh:
 ~/.cargo/bin/cargo: rustup.sh
 	sh rustup.sh -y --default-toolchain=nightly
 
-bundler/target/debug/inbox bundler/target/debug/outbox: ~/.cargo/bin/cargo .FORCE
+bundler/target/release/inbox bundler/target/release/outbox: ~/.cargo/bin/cargo .FORCE
 	sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y \
 		llvm llvm-dev clang libclang-dev \
 		libnl-3-dev libnl-genl-3-dev libnl-route-3-dev libnfnetlink-dev \
