@@ -2,7 +2,7 @@ import glob
 import os
 import subprocess
 
-def write_rmd(experiment_root, csv_name, num_ccp, downsample=None, interact=False, fields="zt, rout, rin, curr_rate, curr_q, elasticity2", rows=None, cols=None):
+def write_rmd(experiment_root, csv_name, num_ccp, downsample=None, interact=False, fields="zt, rout, rin, curr_rate, curr_q, elasticity2", rows=None, cols=None, **kwargs):
     experiment_root = os.path.abspath(os.path.expanduser(experiment_root))
     experiment_name = os.path.basename(experiment_root)
 
@@ -10,7 +10,7 @@ def write_rmd(experiment_root, csv_name, num_ccp, downsample=None, interact=Fals
     results = os.path.join(experiment_root, 'results.md')
 
     tomls = glob.glob(os.path.join(experiment_root, '*.toml'))
-    assert len(tomls) == 1, "there should be exactly 1 .toml (config) in the experiment directory"
+    assert len(tomls) == 1, f"there should be exactly 1 .toml (config) in the experiment directory: {experiment_root} -> {tomls}"
     with open(tomls[0], 'r') as f:
         config = f.read()
 
@@ -71,7 +71,7 @@ plt_m_{i} <- ggplot(df_m_{i}, aes(x=t, y=value, color=measurement)) +
     mm_plots_str = "\n".join(mm_plots)
 
 
-    if num_ccp == 0: 
+    if num_ccp == 0:
         nimbus_plots = ""
     else:
         if len(g) < 3:
@@ -89,6 +89,9 @@ plt_m_{i} <- ggplot(df_m_{i}, aes(x=t, y=value, color=measurement)) +
 
 ```{{r plot1, fig.width=15, fig.height={fig_height}, fig.align='center', echo=FALSE}}
 df <- read.csv("{csv}", sep=",", na.strings=c("","none"))
+if (nrow(df) == 0) {{
+    print("no ccp output")
+}} else {{
 df <- df %>% gather("measurement", "value", {fields})
 plt <- ggplot(df, aes(x=elapsed, y=value, color=measurement)) +
     facet_wrap(vars({wrap_str}), labeller = labeller(.default=label_both, .multi_line=FALSE), nrow={nrow}, ncol=1) +
@@ -97,6 +100,7 @@ plt <- ggplot(df, aes(x=elapsed, y=value, color=measurement)) +
     #scale_y_continuous(breaks=seq(0, 1e+09,   by=10000000))
 {interact_str}ggplotly(plt)
 {static_str}plt
+}}
 ```
 """.format(
             csv = os.path.join(experiment_root, csv_name),
@@ -108,7 +112,7 @@ plt <- ggplot(df, aes(x=elapsed, y=value, color=measurement)) +
             static_str=static_str,
         )
 
-    
+
     fct_path = os.path.join(experiment_root, 'fcts.data')
     if os.path.isfile(fct_path):
         fct_plots = """

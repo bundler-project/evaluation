@@ -1,6 +1,7 @@
 import agenda
+import re
 from util import *
-from cloudlab.cloudlab import make_cloudlab_topology, bootstrap_cloudlab_topology
+from cloudlab.cloudlab import make_cloudlab_topology
 from traffic import *
 
 def create_ssh_connections(config):
@@ -37,6 +38,59 @@ def get_outbox_binary(config):
 def outbox_output_location(config):
     return os.path.join(config['iteration_dir'], 'outbox.log')
 
+def get_iface(cfg, node_key):
+    ifaces = cfg['topology'][node_key]['ifaces']
+    for i in ifaces:
+        if i['dev'] != 'lo':
+            return i
+    raise Exception(f"no valid interface found on {node_key}")
+
+ip_addr_rgx = re.compile(r"\w+:\W*(?P<dev>\w+).*inet (?P<addr>[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)")
+# populate interface names and ips
+def get_interfaces(config, machines):
+    agenda.section("Get node interfaces")
+    for m in machines:
+        if m == 'self' or 'ifaces' in config['topology'][m]:
+            agenda.subtask(f"{machines[m].addr}: skipping get_interfaces")
+            continue
+        agenda.task(machines[m].addr)
+        conn = machines[m]
+        ifaces_raw = conn.run("ip -4 -o addr").stdout.strip().split("\n")
+        ifaces = [ip_addr_rgx.match(i) for i in ifaces_raw]
+        ifaces = [i.groupdict() for i in ifaces if i is not None and i["dev"] != "lo"]
+        if len(ifaces) == 0:
+            raise Exception(f"Could not find ifaces on {conn.addr}: {ifaces_raw}")
+        config['topology'][m]['ifaces'] = ifaces
+
+    return config
+
+# clone the bundler repository
+def init_repo(config, machines):
+    agenda.section("Init nodes")
+    root = config['structure']['bundler_root']
+    clone = f'git clone --recurse-submodules https://github.com/bundler-project/evaluation {root}'
+
+    for m in machines:
+        if m == 'self':
+            continue
+        agenda.task(machines[m].addr)
+        agenda.subtask("cloning eval repo")
+        machines[m].verbose = True
+        if not machines[m].file_exists(root):
+            res = machines[m].run(clone)
+        else:
+            # previously cloned, update to latest commit
+            machines[m].run(f"cd {root} && git pull origin cloudlab")
+            machines[m].run(f"cd {root} && git submodule update --init --recursive")
+        agenda.subtask("compiling experiment tools")
+        machines[m].run(f"make -C {root}")
+        machines[m].verbose = False
+
+def bootstrap_topology(config, machines):
+    config = get_interfaces(config, machines)
+    init_repo(config, machines)
+    return config
+
 class MahimahiTopo:
     MahimahiConfig = namedtuple('MahimahiConfig', ['rtt', 'rate', 'ecmp', 'sfq', 'num_bdp'])
 
@@ -45,6 +99,7 @@ class MahimahiTopo:
         self.conns = conns
         self.machines = machines
         self.config = config
+        self.config = bootstrap_topology(config, machines)
 
     def setup_routing(self, config):
         """
@@ -63,9 +118,9 @@ class MahimahiTopo:
         expect(
             machines['sender'].run(
                 "ip route del {receiver}; ip route add {receiver} via {inbox} src {sender} initcwnd {initcwnd}".format(
-                    sender   = config['topology']['sender']['ifaces'][0]['addr'],
-                    receiver = config['topology']['receiver']['ifaces'][0]['addr'],
-                    inbox    = config['topology']['inbox']['ifaces'][0]['addr'],
+                    sender   = get_iface(config, 'sender')['addr'],
+                    receiver = get_iface(config, 'receiver')['addr'],
+                    inbox    = get_iface(config, 'inbox')['addr'],
                     initcwnd = initcwnd
                 ),
                 sudo=True
@@ -84,8 +139,8 @@ class MahimahiTopo:
         expect(
             machines['inbox'].run(
                 "ip route del {receiver}; ip route add {receiver} dev {inbox_send_iface}".format(
-                    receiver = config['topology']['receiver']['ifaces'][0]['addr'],
-                    inbox_send_iface = config['topology']['inbox']['ifaces'][1]['dev']
+                    receiver = get_iface(config, 'receiver')['addr'],
+                    inbox_send_iface = get_iface(config, 'inbox')['dev']
                 ),
                 sudo=True
             ),
@@ -94,8 +149,8 @@ class MahimahiTopo:
         expect(
             machines['inbox'].run(
                 "ip route del {sender}; ip route add {sender} dev {inbox_recv_iface}".format(
-                    sender = config['topology']['sender']['ifaces'][0]['addr'],
-                    inbox_recv_iface = config['topology']['inbox']['ifaces'][0]['dev']
+                    sender = get_iface(config, 'sender')['addr'],
+                    inbox_recv_iface = get_iface(config, 'inbox')['dev']
                 ),
                 sudo=True
             ),
@@ -106,8 +161,8 @@ class MahimahiTopo:
         expect(
             machines['outbox'].run(
                 "ip route del {sender_addr}; ip route add {sender_addr} via {inbox_addr}".format(
-                    sender_addr = config['topology']['sender']['ifaces'][0]['addr'],
-                    inbox_addr = config['topology']['inbox']['ifaces'][1]['addr']
+                    sender_addr = get_iface(config, 'sender')['addr'],
+                    inbox_addr = get_iface(config, 'inbox')['addr']
                 ), sudo=True
             ),
             "Failed to set routing tables at outbox"
@@ -167,7 +222,7 @@ class MahimahiTopo:
         res = inbox.run(
             "{path} --iface={iface} --port={port} --sample_rate={sample} --qtype={qtype} --buffer={buf}".format(
                 path=get_inbox_binary(config),
-                iface=config['topology']['inbox']['ifaces'][1]['dev'],
+                iface=get_iface(config, 'inbox')['dev'],
                 port=config['topology']['inbox']['listen_port'],
                 sample=config['parameters']['initial_sample_rate'],
                 qtype=qtype,
@@ -194,7 +249,7 @@ class MahimahiTopo:
             pcap_filter="src portrange {}-{}".format(config['parameters']['bg_port_start'], config['parameters']['bg_port_end']),
             iface="ingress",
             inbox_addr='{}:{}'.format(
-                config['topology']['inbox']['ifaces'][1]['addr'],
+                get_iface(config, 'inbox')['addr'],
                 config['topology']['inbox']['listen_port'],
             ),
             sample_rate=config['parameters']['initial_sample_rate'],
@@ -283,160 +338,3 @@ done
         if not nobundler:
             config['iteration_outputs'].append((outbox, outbox_output_location(config)))
         return config
-
-class CloudlabTopo:
-    def __init__(self, config):
-        config = make_cloudlab_topology(config, headless=False)
-        config['topology']['inbox']['listen_port'] = 28316
-        conns, machines = create_ssh_connections(config)
-        self.conns = conns
-        self.machines = machines
-        config = bootstrap_cloudlab_topology(config, machines)
-        self.config = config
-
-    def setup_routing(self, config):
-        """
-        sender --> inbox --> ( outbox | receiver )
-
-        Don't bother with the reverse path
-        """
-        agenda.task("Setting up routing tables")
-        config = self.config
-        machines = self.machines
-
-        def get_addr(cfg, node_key):
-            ifaces = cfg['topology'][node_key]['ifaces']
-            for i in ifaces:
-                if i['dev'] != 'lo':
-                    return i['addr']
-            raise Exception(f"no valid interface found on {node_key}")
-
-        agenda.subtask("sender")
-        expect(
-            machines['sender'].run(
-                "ip route del {receiver}; ip route add {receiver} via {inbox} src {sender}".format(
-                    sender   = get_addr(config, 'sender'),
-                    receiver = get_addr(config, 'receiver'),
-                    inbox    = get_addr(config, 'inbox')
-                ),
-                sudo=True
-            ),
-            "Failed to set routing tables at sender"
-        )
-
-        agenda.subtask("inbox")
-        expect(
-            machines['inbox'].run(
-                "sysctl net.ipv4.ip_forward=1",
-                sudo=True
-            ),
-            "Failed to set IP forwarding at inbox"
-        )
-
-    def run_traffic(self, config, exp, bundle_traffic, cross_traffic):
-        self.config = config
-        if exp.alg['name'] == "nobundler" and exp.sch != "fifo":
-            agenda.subfailure("Cannot run nobundler non-fifo in real-world")
-            return
-
-        agenda.subtask("Start outbox")
-        self.start_outbox(config, self.machines['outbox'])
-        self.config['iteration_outputs'].append((self.machines['outbox'], outbox_output_location(self.config)))
-
-        bundle_out = list(start_multiple_server(config, self.machines['sender'], bundle_traffic))
-        cross_out = list(start_multiple_server(config, self.machines['inbox'], cross_traffic))
-
-        bundle_client = list(start_multiple_client(
-            config,
-            self.machines['receiver'],
-            bundle_traffic,
-            True,
-            execute=False,
-        ))
-        cross_client = list(start_multiple_client(
-            config,
-            self.machines['receiver'],
-            cross_traffic,
-            False,
-            execute=False,
-        ))
-
-        return self.start_cloudlab(bundle_client, cross_client)
-
-    def start_inbox(self, qtype, q_buffer_size):
-        config = self.config
-        inbox = self.machines['inbox']
-
-        agenda.subtask("Starting inbox")
-
-        inbox_out = os.path.join(config['iteration_dir'], "inbox.log")
-        res = inbox.run(
-            "{path} --iface={iface} --port={port} --sample_rate={sample} --qtype={qtype} --buffer={buf}".format(
-                path=get_inbox_binary(config),
-                iface=config['topology']['inbox']['ifaces'][0]['dev'],
-                port=config['topology']['inbox']['listen_port'],
-                sample=config['parameters']['initial_sample_rate'],
-                qtype=qtype,
-                buf=q_buffer_size
-            ),
-            sudo=True,
-            background=True,
-            stdout=inbox_out,
-            stderr=inbox_out,
-        )
-
-        if not config['args'].dry_run:
-            time.sleep(10)
-        inbox.check_proc('inbox', inbox_out)
-        inbox.check_file('Wait for CCP to install datapath program', inbox_out)
-
-        config['iteration_outputs'].append((inbox, inbox_out))
-        return inbox_out
-
-    def start_outbox(self, config, outbox):
-        outbox_output = outbox_output_location(config)
-        outbox_cmd = "sudo {path} --filter \"{pcap_filter}\" --iface {iface} --inbox {inbox_addr} --sample_rate {sample_rate}".format(
-            path=get_outbox_binary(config),
-            pcap_filter="src portrange {}-{}".format(config['parameters']['bg_port_start'], config['parameters']['bg_port_end']),
-            iface=config['topology']['outbox']['ifaces'][0]['dev'],
-            inbox_addr='{}:{}'.format(
-                config['topology']['inbox']['ifaces'][0]['addr'],
-                config['topology']['inbox']['listen_port'],
-            ),
-            sample_rate=config['parameters']['initial_sample_rate'],
-        )
-
-        outbox.run(
-            outbox_cmd,
-            stdout=outbox_output_location(config),
-            stderr=outbox_output_location(config),
-            background=True,
-        )
-
-    def start_cloudlab(self, bundle_client, cross_client):
-        do_stuff = io.StringIO()
-        do_stuff.write("""#!/bin/bash
-set -x
-
-pids=()
-{cross_clients}
-{bundle_clients}
-
-for pid in ${{pids[*]}}; do
-    wait $pid
-done
-    """.format(
-            cross_clients='\n'.join(["({}) &\npids+=($!)".format(c) for c in cross_client]),
-            bundle_clients='\n'.join(["({}) &\npids+=($!)".format(c) for c in bundle_client]),
-        ))
-
-        sh_path = os.path.join(self.config['iteration_dir'], 'run_traffic.sh')
-        self.machines['receiver'].put(do_stuff, remote=sh_path)
-        self.machines['receiver'].run("chmod +x {}".format(sh_path))
-
-        expect(
-            self.machines['receiver'].run(sh_path, wd=self.config['iteration_dir']),
-            "Failed to start traffic on receiver"
-        )
-
-        return self.config

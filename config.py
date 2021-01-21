@@ -53,7 +53,8 @@ def check_config(config):
         assert num_self > 0, "One node in topology section must be labeled with \"self = true\""
         assert num_self == 1, "Only one node in topology section can be labeled self"
     else:
-        nodes = ['sender', 'inbox', 'outbox', 'receiver']
+        assert 'listen_port' in topology['inbox'], "topology.inbox must define listen_port"
+        nodes = ['sender', 'outbox', 'receiver']
         for node in nodes:
             assert node not in topology, "Don't use key topology.{} with cloudlab; it will be auto-populated".format(node)
 

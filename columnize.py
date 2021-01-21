@@ -39,7 +39,7 @@ for line in sys.stdin:
         if print_head:
             actual_head = head
             if cross_traffic_pattern:
-                actul_head = head + ("start","finish","during",)
+                actual_head = head + ("start","finish","during",)
             print(" ".join(actual_head))
     else:
         fields, vals = zip(*flds(sp))

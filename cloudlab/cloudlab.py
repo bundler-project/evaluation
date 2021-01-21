@@ -119,7 +119,7 @@ def check_existing_experiment(driver):
     elements = [e.text.split()[0] for e in table.find_elements_by_xpath("//table/tbody") if len(e.text.split()) > 0]
     agenda.subtask("Existing experiment found")
     driver.find_element_by_link_text(elements[0]).click()
-    time.sleep(3)
+    time.sleep(4)
     return get_machines_from_experiment(driver)
 
 def get_machines_from_experiment(driver):
@@ -136,6 +136,8 @@ cloudlab_conn_rgx = re.compile(r"ssh -p (?P<port>[0-9]+) (?P<user>[a-z0-9]+)@(?P
 # sender, inbox, outbox, receiver
 def make_cloudlab_topology(config, headless=False):
     agenda.section("Setup Cloudlab topology")
+    listen_port = config['topology']['inbox']['listen_port']
+
     agenda.subtask(f"headless: {headless}")
     driver = init_driver(
         config['topology']['cloudlab']['username'],
@@ -150,51 +152,7 @@ def make_cloudlab_topology(config, headless=False):
     machines = [cloudlab_conn_rgx.match(m).groupdict() for m in machines if 'cloudlab.us' in m]
     config['topology']['sender'] = machines[0]
     config['topology']['inbox'] = machines[1]
+    config['topology']['inbox']['listen_port'] = listen_port
     config['topology']['outbox'] = machines[2]
     config['topology']['receiver'] = machines[2]
-    return config
-
-ip_addr_rgx = re.compile(r"\w+:\W*(?P<dev>\w+).*inet (?P<addr>[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)")
-# populate interface names and ips
-def get_interfaces(config, machines):
-    agenda.section("Get Cloudlab node interfaces")
-    for m in machines:
-        if m == 'self':
-            continue
-        agenda.task(machines[m].addr)
-        conn = machines[m]
-        ifaces_raw = conn.run("ip -4 -o addr").stdout.strip().split("\n")
-        ifaces = [ip_addr_rgx.match(i) for i in ifaces_raw]
-        ifaces = [i.groupdict() for i in ifaces if i is not None and i["dev"] != "lo"]
-        if len(ifaces) == 0:
-            raise Exception(f"Could not find ifaces on {conn.addr}: {ifaces_raw}")
-        config['topology'][m]['ifaces'] = ifaces
-
-    return config
-
-# clone the bundler repository
-def init_repo(config, machines):
-    agenda.section("Init cloudlab nodes")
-    root = config['structure']['bundler_root']
-    clone = f'git clone --recurse-submodules https://github.com/bundler-project/evaluation {root}'
-
-    for m in machines:
-        if m == 'self':
-            continue
-        agenda.task(machines[m].addr)
-        agenda.subtask("cloning eval repo")
-        machines[m].verbose = True
-        if not machines[m].file_exists(root):
-            res = machines[m].run(clone)
-        else:
-            # previously cloned, update to latest commit
-            machines[m].run(f"cd {root} && git pull origin cloudlab")
-            machines[m].run(f"cd {root} && git submodule update --init --recursive")
-        agenda.subtask("compiling experiment tools")
-        machines[m].run(f"make -C {root}")
-        machines[m].verbose = False
-
-def bootstrap_cloudlab_topology(config, machines):
-    config = get_interfaces(config, machines)
-    init_repo(config, machines)
     return config

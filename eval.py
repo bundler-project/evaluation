@@ -9,6 +9,7 @@ import io
 import subprocess
 import getpass
 
+from cloudlab.cloudlab import make_cloudlab_topology
 from ccp import *
 from config import read_config, enumerate_experiments
 from parse_outputs import parse_outputs
@@ -61,9 +62,6 @@ def check_inbox(config, inbox):
     check_ccp_alg(config, inbox)
 
 def check_receiver(config, receiver):
-    if 'cloudlab' in config['topology']:
-        return
-
     agenda.task("mahimahi (receiver)")
     if not receiver.prog_exists("mm-delay"):
         fatal_warn("Receiver does not have mahimahi installed.")
@@ -151,9 +149,9 @@ if __name__ == "__main__":
         logging.basicConfig(level=logging.DEBUG)
 
     if 'cloudlab' in config['topology']:
-        topo = CloudlabTopo(config)
-    else:
-        topo = MahimahiTopo(config)
+        config = make_cloudlab_topology(config, headless=False)
+
+    topo = MahimahiTopo(config)
 
     topo.setup_routing(config)
     machines = topo.machines
@@ -260,12 +258,12 @@ if __name__ == "__main__":
         else:
             machines['inbox'].run(
                     "tc qdisc del dev {iface} root".format(
-                        iface=config['topology']['inbox']['ifaces'][1]['dev']
+                        iface=get_iface(config, 'inbox')['dev']
                     ), sudo=True
             )
             machines['inbox'].run(
                     "tc qdisc add dev {iface} root bfifo limit 15mbit".format(
-                        iface=config['topology']['inbox']['ifaces'][1]['dev']
+                        iface=get_iface(config, 'inbox')['dev']
                     ), sudo=True
             )
 
@@ -289,7 +287,7 @@ if __name__ == "__main__":
         agenda.subtask("Remove qdisc")
         machines['inbox'].run(
                 "tc qdisc del dev {iface} root".format(
-                    iface=config['topology']['inbox']['ifaces'][1]['dev']
+                    iface=get_iface(config,'inbox')['dev']
                 ), sudo=True
         )
 
@@ -315,5 +313,5 @@ if __name__ == "__main__":
             parse_args['rows'] = config['args'].rows
         if config['args'].cols:
             parser_args['cols'] = config['args'].cols
-        parse_outputs(config['local_experiment_dir'], parse_args)
+        parse_outputs(config, parse_args)
 

@@ -117,7 +117,7 @@ def parse_ccp_logs(dirname, sample_rate, replot):
 
     return global_out_fname, len(g)
 
-def parse_mahimahi_logs(dirname, sample_rate, replot):
+def parse_mahimahi_logs(dirname, sample_rate, replot, bundler_root):
     agenda.subtask("mahimahi logs")
     pattern = re.compile('(?P<sch>[a-z]+)_(?P<bw>[\d]+)_(?P<delay>[\d]+)/(?P<alg>[a-zA-Z]+).(?P<args>[a-z_]+=[a-zA-Z_0-9].+)?/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/downlink.log')
     g = glob.glob(dirname + "/**/downlink.log", recursive=True)
@@ -131,7 +131,7 @@ def parse_mahimahi_logs(dirname, sample_rate, replot):
             exp_root = os.path.dirname(exp)
             if not replot and os.path.isfile(os.path.join(exp_root, 'mm-graph.tmp')):
                 continue
-            subprocess.check_output("mm-graph {} {} --fake --plot-direction ingress --agg \"5000:6000=bundle,8000:9000=cross\"".format(exp, rtt), shell=True, executable="/bin/bash")
+            subprocess.check_output(f"{bundler_root}/mahimahi/scripts/mm-graph {exp} {rtt} --fake --plot-direction ingress --agg \"5000:6000=bundle,8000:9000=cross\"", shell=True, executable="/bin/bash")
             subprocess.check_output("mv /tmp/mm-graph.tmp {}".format(exp_root), shell=True)
         else:
             print(f"skipping {exp}, no regex match")
@@ -152,8 +152,12 @@ def parse_etg_logs(dirname, replot):
         some = True
         exp_root = "/".join(exp.split("/")[:-1])
         exp_root = os.path.dirname(exp)
-        exp_root = exp_root.split(dirname)[-1]
-        _, setup, alg, traffic, seed = exp_root.split("/")
+        exp_root = exp_root.split(dirname)[-1].split("/")
+        try:
+            _, setup, alg, traffic, seed = exp_root
+        except Exception as e:
+            print(exp_root)
+            raise e
         alg_sp = alg.split(".")
         if not alg_sp:
             alg = alg_sp[0]
@@ -163,8 +167,9 @@ def parse_etg_logs(dirname, replot):
     if some:
         subprocess.call(f"mv tmp {outf}", shell=True)
 
-def parse_outputs(root_path, replot=False, interact=False, graph_kwargs={}):
-    experiment_root = os.path.abspath(os.path.expanduser(root_path))
+def parse_outputs(config, replot=False, interact=False, graph_kwargs={}):
+    experiment_root = os.path.abspath(os.path.expanduser(config['local_experiment_dir']))
+    print('experiment_root', experiment_root)
 
     if 'downsample' in graph_kwargs:
         sample_rate = graph_kwargs['downsample']
@@ -172,7 +177,7 @@ def parse_outputs(root_path, replot=False, interact=False, graph_kwargs={}):
         sample_rate = 1
 
     global_out_fname, num_ccp = parse_ccp_logs(experiment_root, sample_rate, replot)
-    parse_mahimahi_logs(experiment_root, sample_rate, replot)
+    parse_mahimahi_logs(experiment_root, sample_rate, replot, config['structure']['bundler_root'])
     parse_etg_logs(experiment_root, replot)
 
     write_rmd(experiment_root, global_out_fname, num_ccp, **graph_kwargs)
@@ -182,6 +187,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Parse bundler experiment logs and graph results")
     parser.add_argument("root", help="Root directory containing all experiments to be plotted")
+    parser.add_argument("--bundler_root", type=str, help="Bundler root directory", default="~/bundler-scripts")
     parser.add_argument("--downsample", type=int, help="Downsamples to 1/N of all log lines for faster plotting")
     parser.add_argument("--fields", help="Which fields to plot")
     parser.add_argument("--rows", help="(Column name) by which to split into a grid vertically")
@@ -191,4 +197,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     graph_kwargs = dict((k,v) for k,v in vars(args).items() if (v and not k=='root' and not k=='replot'))
 
-    parse_outputs(args.root, replot=args.replot, interact=args.interact, graph_kwargs=graph_kwargs)
+    config = {}
+    config['local_experiment_dir'] = args.root
+    config['structure'] = {'bundler_root': args.bundler_root}
+    parse_outputs(config, replot=args.replot, interact=args.interact, graph_kwargs=graph_kwargs)
