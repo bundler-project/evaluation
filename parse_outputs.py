@@ -48,12 +48,12 @@ def parse_nimbus_log(f, out, out_switch, header, prepend, fields, sample_rate):
                 elapsed = float(sp[11].replace(",", ""))
                 from_mode = 'delay'
                 to_mode = 'xtcp'
-                delay_threshold = ''
+                #delay_threshold = ''
             else:
                 elapsed = float(sp[13].replace(",", ""))
                 from_mode = 'xtcp'
                 to_mode = 'delay'
-                delay_threshold = float(sp[7].replace(",", ""))
+                #delay_threshold = float(sp[7].replace(",", ""))
 
             if from_mode == 'xtcp':
                 xtcp_regions.append((last_switch, elapsed))
@@ -77,7 +77,7 @@ def parse_ccp_logs(dirname, sample_rate, replot):
     agenda.subtask("ccp logs")
     fields = [9,17,19,27,29,35,13]
     log_header = "elapsed,rtt,zt,rout,rin,curr_rate,curr_q,elasticity2"
-    pattern = re.compile('(?P<sch>[a-z]+)_(?P<bw>[\d]+)_(?P<delay>[\d]+)/(?P<alg>[a-z_]+).(?P<args>[a-z_]+=[a-zA-Z_0-9].+)?/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/ccp.log')
+    pattern = re.compile(r'(?P<sch>[a-z]+)_(?P<bw>[\d]+)_(?P<delay>[\d]+)/(?P<alg>[a-z_]+).(?P<args>[a-z_]+=[a-zA-Z_0-9].+)?/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/ccp.log')
 
     g = glob.glob(dirname + "/**/ccp.log", recursive=True)
 
@@ -100,6 +100,8 @@ def parse_ccp_logs(dirname, sample_rate, replot):
                     exit("headers do not align")
                 old_header = header
                 out.write(header + "\n")
+                bg = bg if bg != '' else 'None'
+                cross = cross if cross != '' else 'None'
                 prepend = f"{sch},{alg},{bw},{delay},{','.join(a[1] for a in args)},{bg},{cross},{seed}"
                 parse_nimbus_log(f, out, out_switch, header, prepend, fields, sample_rate)
         else:
@@ -119,7 +121,7 @@ def parse_ccp_logs(dirname, sample_rate, replot):
 
 def parse_mahimahi_logs(dirname, sample_rate, replot, bundler_root):
     agenda.subtask("mahimahi logs")
-    pattern = re.compile('(?P<sch>[a-z]+)_(?P<bw>[\d]+)_(?P<delay>[\d]+)/(?P<alg>[a-zA-Z]+).(?P<args>[a-z_]+=[a-zA-Z_0-9].+)?/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/downlink.log')
+    pattern = re.compile(r'(?P<sch>[a-z]+)_(?P<bw>[\d]+)_(?P<delay>[\d]+)/(?P<alg>[a-zA-Z]+).(?P<args>[a-z_]+=[a-zA-Z_0-9].+)?/b=(?P<bg>[^_]*)_c=(?P<cross>[^/]*)/(?P<seed>[\d]+)/downlink.log')
     g = glob.glob(dirname + "/**/downlink.log", recursive=True)
     for exp in g:
         matches = pattern.search(exp)
@@ -169,7 +171,7 @@ def parse_etg_logs(dirname, replot):
 
 def parse_outputs(config, replot=False, interact=False, graph_kwargs={}):
     experiment_root = os.path.abspath(os.path.expanduser(config['local_experiment_dir']))
-    print('experiment_root', experiment_root)
+    agenda.task(f'parsing experiment_root: {experiment_root}')
 
     if 'downsample' in graph_kwargs:
         sample_rate = graph_kwargs['downsample']

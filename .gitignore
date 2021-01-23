@@ -2,3 +2,6 @@
 __pycache__/
 curr_url
 experiments
+lib/
+bin/
+share/

@@ -24,19 +24,19 @@ class IperfTraffic(Traffic):
     def __str__(self):
         return "iperf.{}.{}".format(self.traffic.alg, self.traffic.num_flows)
 
-    def start_client(traffic, config, node, in_bundler, execute):
-        agenda.subtask("Start iperf client ({})".format(traffic))
-        iperf_out = os.path.join(config['iteration_dir'], "iperf_client_{}.log".format(traffic.port))
-        check_bundler_port(in_bundler, traffic, config)
+    def start_client(self, config, node, in_bundler, execute):
+        agenda.subtask("Start iperf client ({})".format(self))
+        iperf_out = os.path.join(config['iteration_dir'], "iperf_client_{}.log".format(self.port))
+        check_bundler_port(in_bundler, self, config)
         cmd = "sleep {delay} && {path} -c {ip} -p {port} --reverse -i {report_interval} -t {length} -P {num_flows} -Z {alg}".format(
             path=os.path.join(config['structure']['bundler_root'], 'iperf/src/iperf'),
             ip=config['topology']['sender']['ifaces'][0]['addr'] if in_bundler else '$MAHIMAHI_BASE',
-            port=traffic.port,
-            report_interval=traffic.report_interval,
-            length=traffic.length,
-            num_flows=traffic.num_flows,
-            alg=traffic.alg,
-            delay=traffic.start_delay
+            port=self.port,
+            report_interval=self.report_interval,
+            length=self.length,
+            num_flows=self.num_flows,
+            alg=self.alg,
+            delay=self.start_delay
         )
 
         config['iteration_outputs'].append((node, iperf_out))
@@ -53,21 +53,21 @@ class IperfTraffic(Traffic):
         else:
             return cmd + " > {}".format(iperf_out)
 
-    def start_server(traffic, config, node, execute):
-        if int(traffic.port) == 8900 or int(traffic.port) == 8901:
+    def start_server(self, config, node, execute):
+        if int(self.port) == 8900 or int(self.port) == 8901:
             agenda.subtask("Skipping server!")
             return
-        agenda.subtask("Start iperf server ({})".format(traffic))
-        iperf_out = os.path.join(config['iteration_dir'], "iperf_server_{}.log".format(traffic.port))
+        agenda.subtask("Start iperf server ({})".format(self))
+        iperf_out = os.path.join(config['iteration_dir'], "iperf_server_{}.log".format(self.port))
         expect(
             node.run(
-                "{path} -s -p {port} --reverse -i {report_interval} -t {length} -P {num_flows}".format(
+                "{path} -s -p {port} --reverse -i {report_interval} -t {length} -P {num_flows} -Z {alg}".format(
                     path=os.path.join(config['structure']['bundler_root'], 'iperf/src/iperf'),
-                    port=traffic.port,
-                    report_interval=traffic.report_interval,
-                    length=traffic.length,
-                    num_flows=traffic.num_flows,
-                    alg=traffic.alg,
+                    port=self.port,
+                    report_interval=self.report_interval,
+                    length=self.length,
+                    num_flows=self.num_flows,
+                    alg=self.alg,
                 ),
                 background=True,
                 stdout=iperf_out,
@@ -92,18 +92,18 @@ class CBRTraffic(Traffic):
     def __str__(self):
         return "cbr.{}".format(self.rate)
 
-    def start_client(traffic, config, node, in_bundler, execute):
-        agenda.subtask("Start cbr client ({})".format(traffic))
-        iperf_out = os.path.join(config['iteration_dir'], "cbr_client_{}.log".format(traffic.port))
-        check_bundler_port(in_bundler, traffic, config)
+    def start_client(self, config, node, in_bundler, execute):
+        agenda.subtask("Start cbr client ({})".format(self))
+        iperf_out = os.path.join(config['iteration_dir'], "cbr_client_{}.log".format(self.port))
+        check_bundler_port(in_bundler, self, config)
 
         cmd = "sleep {delay} && {path} -c {ip} -p {port} --reverse -i {report_interval} -t {length}".format(
             path=os.path.join(config['structure']['bundler_root'], 'iperf/src/iperf'),
             ip=config['topology']['sender']['ifaces'][0]['addr'] if in_bundler else '$MAHIMAHI_BASE',
-            port=traffic.port,
-            report_interval=traffic.report_interval,
-            length=traffic.length,
-            delay=traffic.start_delay
+            port=self.port,
+            report_interval=self.report_interval,
+            length=self.length,
+            delay=self.start_delay
         )
 
         config['iteration_outputs'].append((node, iperf_out))
@@ -120,20 +120,20 @@ class CBRTraffic(Traffic):
         else:
             return cmd + " > {}".format(iperf_out)
 
-    def start_server(traffic, config, node, execute):
-        agenda.subtask("Start cbr server ({})".format(traffic))
-        iperf_out = os.path.join(config['iteration_dir'], "cbr_server_{}.log".format(traffic.port))
+    def start_server(self, config, node, execute):
+        agenda.subtask("Start cbr server ({})".format(self))
+        iperf_out = os.path.join(config['iteration_dir'], "cbr_server_{}.log".format(self.port))
 
         ccp_binary = get_ccp_binary_path(config, 'const')
-        ccp_binary_name = ccp_binary.split('/')[-1]
+        #ccp_binary_name = ccp_binary.split('/')[-1]
         ccp_out = os.path.join(config['iteration_dir'], "ccp_const.log")
 
         agenda.subtask("Starting CBR CCP agent")
         expect(node.run(
             "{ccp_path} --ipc=netlink --rate={rate} --cwnd_cap={cwnd_cap}".format(
                 ccp_path=ccp_binary,
-                rate=traffic.rate,
-                cwnd_cap=traffic.cwnd_cap,
+                rate=self.rate,
+                cwnd_cap=self.cwnd_cap,
             ),
             sudo=True,
             background=True,
@@ -145,9 +145,9 @@ class CBRTraffic(Traffic):
             node.run(
                 "{path} -s -p {port} --reverse -i {report_interval} -t {length} -Z ccp".format(
                     path=os.path.join(config['structure']['bundler_root'], 'iperf/src/iperf'),
-                    port=traffic.port,
-                    report_interval=traffic.report_interval,
-                    length=traffic.length,
+                    port=self.port,
+                    report_interval=self.report_interval,
+                    length=self.length,
                 ),
                 background=True,
                 stdout=iperf_out,
@@ -166,20 +166,6 @@ class CBRTraffic(Traffic):
         config['iteration_outputs'].append((node, ccp_out))
         return iperf_out
 
-def create_etg_config(node, global_config, f, traffic):
-    port_start = traffic.start_port
-    num_conns = int(traffic.num_conns)
-    num_backlogged = int(traffic.num_backlogged)
-    for p in range(port_start, port_start + num_conns):
-        f.write("server {} {}\n".format(global_config['topology']['sender']['ifaces'][0]['addr'], p))
-    dist_full_path = node.local_path(os.path.join(global_config['distribution_dir'], traffic.distribution))
-    f.write(f"req_size_dist {dist_full_path}\n")
-    f.write("fanout {}\n".format(traffic.fanout))
-    if num_backlogged:
-        f.write("persistent_servers {}\n".format(num_backlogged))
-    f.write("load {}Mbps\n".format(traffic.load))
-    f.write("num_reqs {}\n".format(traffic.num_reqs))
-
 class PoissonTraffic(Traffic):
     trafficType = namedtuple('PoissonTraffic', ['start_port', 'num_conns', 'num_backlogged', 'num_reqs', 'distribution', 'fanout', 'load', 'congalg', "seed", 'start_delay'])
     def __init__(self, *args, **kwargs):
@@ -188,11 +174,25 @@ class PoissonTraffic(Traffic):
     def __str__(self):
         return "poisson.{}.{}.{}".format(self.traffic.distribution.split("_")[0], self.traffic.load, self.traffic.congalg)
 
-    def start_client(traffic, config, node, in_bundler, execute):
-        if config['args'].verbose:
-            agenda.subtask("Create ETG config file")
 
-        if traffic.start_port < config['parameters']['bg_port_start'] or traffic.start_port + traffic.num_conns > config['parameters']['bg_port_end']:
+    def create_etg_config(self, node, global_config, f):
+        port_start = self.start_port
+        num_conns = int(self.num_conns)
+        num_backlogged = int(self.num_backlogged)
+        for p in range(port_start, port_start + num_conns):
+            f.write("server {} {}\n".format(global_config['topology']['sender']['ifaces'][0]['addr'], p))
+        dist_full_path = node.local_path(os.path.join(global_config['distribution_dir'], self.distribution))
+        f.write(f"req_size_dist {dist_full_path}\n")
+        f.write("fanout {}\n".format(self.fanout))
+        if num_backlogged:
+            f.write("persistent_servers {}\n".format(num_backlogged))
+        f.write("load {}Mbps\n".format(self.load))
+        f.write("num_reqs {}\n".format(self.num_reqs))
+
+    def start_client(self, config, node, in_bundler, execute):
+        agenda.subtask("Create ETG config file")
+
+        if self.start_port < config['parameters']['bg_port_start'] or self.start_port + self.num_conns > config['parameters']['bg_port_end']:
             fatal_warn("Requested poisson traffic would be outside of outbox portrange ({}-{})".format(
                 config['parameters']['bg_port_start'], config['parameters']['bg_port_end']
             ))
@@ -203,7 +203,7 @@ class PoissonTraffic(Traffic):
             i+=1
             etg_config_path = os.path.join(config['iteration_dir'], f"etgConfig{i}")
         with io.StringIO() as etg_config:
-            create_etg_config(node, config, etg_config, traffic)
+            self.create_etg_config(node, config, etg_config)
             node.put(etg_config, remote=os.path.join(config['iteration_dir'], f"etgConfig{i}"))
 
         etg_out = os.path.join(config['iteration_dir'], "{}".format(i))
@@ -214,8 +214,8 @@ class PoissonTraffic(Traffic):
             path=config['etg_client_path'],
             config=os.path.basename(etg_config_path),
             out_prefix=str(i),
-            seed=traffic.seed,
-            delay=traffic.start_delay
+            seed=self.seed,
+            delay=self.start_delay
         )
 
         config['iteration_outputs'].append((node, etg_out + "_flows.out"))
@@ -233,8 +233,8 @@ class PoissonTraffic(Traffic):
         else:
             return cmd
 
-    def start_server(traffic, config, node, execute):
-        agenda.subtask(f"Start ETG server ({traffic}) on {node}")
+    def start_server(self, config, node, execute):
+        agenda.subtask(f"Start ETG server ({self}) on {node.addr}")
 
         i=1
         etg_out = os.path.join(config['iteration_dir'], "etg_server{}.log".format(i))
@@ -242,14 +242,13 @@ class PoissonTraffic(Traffic):
             i+=1
             etg_out = os.path.join(config['iteration_dir'], "etg_server{}.log".format(i))
 
-        node.verbose = True
         expect(
             node.run(
                 "{sh} {start} {conns} {alg}".format(
                     sh=config['etg_server_path'],
-                    start=traffic.start_port,
-                    conns=traffic.num_conns,
-                    alg=traffic.congalg
+                    start=self.start_port,
+                    conns=self.num_conns,
+                    alg=self.congalg
                 ),
                 wd=os.path.join(config['structure']['bundler_root'], 'empirical-traffic-gen'),
                 stdout=etg_out,
@@ -263,9 +262,9 @@ class PoissonTraffic(Traffic):
             time.sleep(1)
             num_servers_running = int(node.run("pgrep -c etgServer").stdout.strip())
         else:
-            num_servers_running = traffic.num_conns
-        if num_servers_running != traffic.num_conns:
-            fatal_warn("Traffic pattern requested {} servers, but only {} are running properly.".format(traffic.num_conns, num_servers_running), exit=False)
+            num_servers_running = self.num_conns
+        if num_servers_running != self.num_conns:
+            fatal_warn("self pattern requested {} servers, but only {} are running properly.".format(self.num_conns, num_servers_running), exit=False)
             with io.BytesIO() as f:
                 node.get(node.local_path(etg_out), local=f)
                 print(f.getvalue().decode("utf-8"))

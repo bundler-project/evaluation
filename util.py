@@ -50,7 +50,6 @@ class ConnectionWrapper(Connection):
         .stderr = stderr string (if not redirected to a file)
     """
     def run(self, cmd, *args, stdin="/dev/stdin", stdout="/dev/stdout", stderr="/dev/stderr", ignore_out=False, wd=None, sudo=False, background=False, pty=True, **kwargs):
-        self.verbose = True
         # Prepare command string
         pre = ""
         if wd:
@@ -172,8 +171,7 @@ def update_sysctl(machines, config):
         agenda.task("Updating sysctl")
 
         for (name, conn) in set((m, machines[m]) for m in machines if m in ("sender", "inbox", "outbox", "receiver")):
-            if config['args'].verbose or config['args'].dry_run:
-                agenda.subtask(f"{name} <-> {conn.addr}")
+            agenda.subtask(f"{name}")
 
             for k in config['sysctl']:
                 v = config['sysctl'][k]
@@ -184,13 +182,13 @@ def update_sysctl(machines, config):
 
 def disable_tcp_offloads(config, machines):
     agenda.task("Turn off TSO, GSO, and GRO")
-    for node in ['sender', 'inbox', 'outbox', 'receiver']:
-        agenda.subtask(node)
-        for i,iface in enumerate(config['topology'][node]['ifaces']):
+    for (name, conn) in set((m, machines[m]) for m in machines if m in ("sender", "inbox", "outbox", "receiver")):
+        agenda.subtask(name)
+        for iface in config['topology'][name]['ifaces']:
             expect(
-                machines[node].run(
+                conn.run(
                     "ethtool -K {} tso off gso off gro off".format(
-                        config['topology'][node]['ifaces'][i]['dev']
+                        iface['dev']
                     ),
                     sudo=True
                 ),
@@ -238,7 +236,7 @@ def start_tcpdump(config, machines):
 
 def kill_leftover_procs(config, machines, verbose=False):
     agenda.subtask("Kill leftover experiment processes")
-    for (name, conn) in set((m, machines[m]) for m in machines if m in ("sender", "inbox", "outbox", "receiver")):
+    for (_name, conn) in set((m, machines[m]) for m in machines if m in ("sender", "inbox", "outbox", "receiver")):
         proc_regex = "|".join(["inbox", "outbox", *config['ccp'].keys(), "iperf", "tcpdump", "etgClient", "etgServer", "ccp_const"])
         conn.run(
             "pkill -9 \"({search})\"".format(

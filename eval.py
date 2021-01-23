@@ -31,6 +31,8 @@ parser.add_argument('--skip-git', action='store_true', dest='skip_git',
         help="if supplied, skip synchronizing bundler and ccp get repos according to the config")
 parser.add_argument('--interact', action='store_true', dest='interact',
         help="if supplied, wait for user to press a key before executing each command (should use with verbose)")
+parser.add_argument('--headless', action='store_true', dest='headless',
+        help="if supplied, show the cloudlab Chrome window")
 parser.add_argument('--overwrite-existing', action='store_true', dest='overwrite_existing',
         help="if supplied, if results already exist for a given experiment, the experiment will be re-run and results overwritten, be careful when supplying this!")
 parser.add_argument('--skip-existing', action='store_true', dest='skip_existing',
@@ -113,7 +115,7 @@ def prepare_iteration_dir(config, conns):
         fatal_error("Iteration directory not reset! This must be a bug.")
 
     iteration_dirs.add(config['iteration_dir'])
-    for (addr, conn) in conns.items():
+    for (_addr, conn) in conns.items():
         expect(
             conn.run("mkdir -p {}".format(config['iteration_dir'])),
             "Failed to create iteration directory {}".format(config['iteration_dir'])
@@ -123,12 +125,12 @@ def prepare_iteration_dir(config, conns):
 
 def start_interacting(machines):
     warn("Starting interactive mode", exit=False)
-    for name, m in machines.items():
+    for _name, m in machines.items():
         m.interact = True
         m.verbose = True
 def stop_interacting(machines):
     warn("Stopping interactive mode", exit=False)
-    for name, m in machines.items():
+    for _name, m in machines.items():
         m.interact = False
         m.verbose = False
 
@@ -149,7 +151,7 @@ if __name__ == "__main__":
         logging.basicConfig(level=logging.DEBUG)
 
     if 'cloudlab' in config['topology']:
-        config = make_cloudlab_topology(config, headless=False)
+        config = make_cloudlab_topology(config, headless=args.headless)
 
     topo = MahimahiTopo(config)
 
@@ -164,6 +166,9 @@ if __name__ == "__main__":
     prepare_directories(config, conns)
     details_md = os.path.join(config['local_experiment_dir'], 'details.md')
     results_md = os.path.join(config['local_experiment_dir'], 'results.md')
+    agenda.task("Fetch build logs")
+    topo.fetch_build_logs(config)
+
     if not os.path.exists(details_md):
         with open(details_md, 'w') as f:
             f.write(args.details + "\n")
@@ -312,6 +317,6 @@ if __name__ == "__main__":
         if config['args'].rows:
             parse_args['rows'] = config['args'].rows
         if config['args'].cols:
-            parser_args['cols'] = config['args'].cols
+            parse_args['cols'] = config['args'].cols
+        config['structure']['bundler_root'] = '.'
         parse_outputs(config, parse_args)
-

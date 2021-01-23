@@ -51,7 +51,7 @@ def get_interfaces(config, machines):
     agenda.section("Get node interfaces")
     for m in machines:
         if m == 'self' or 'ifaces' in config['topology'][m]:
-            agenda.subtask(f"{machines[m].addr}: skipping get_interfaces")
+            agenda.subtask(f"{machines[m].addr}: {config['topology'][m]['ifaces']}")
             continue
         agenda.task(machines[m].addr)
         conn = machines[m]
@@ -61,6 +61,7 @@ def get_interfaces(config, machines):
         if len(ifaces) == 0:
             raise Exception(f"Could not find ifaces on {conn.addr}: {ifaces_raw}")
         config['topology'][m]['ifaces'] = ifaces
+        agenda.subtask(f"{machines[m].addr}: {config['topology'][m]['ifaces']}")
 
     return config
 
@@ -73,9 +74,8 @@ def init_repo(config, machines):
     for m in machines:
         if m == 'self':
             continue
-        agenda.task(machines[m].addr)
+        agenda.task(f"init {m}: {machines[m].addr}")
         agenda.subtask("cloning eval repo")
-        machines[m].verbose = True
         if not machines[m].file_exists(root):
             res = machines[m].run(clone)
         else:
@@ -83,8 +83,9 @@ def init_repo(config, machines):
             machines[m].run(f"cd {root} && git pull origin cloudlab")
             machines[m].run(f"cd {root} && git submodule update --init --recursive")
         agenda.subtask("compiling experiment tools")
-        machines[m].run(f"make -C {root}")
-        machines[m].verbose = False
+        machines[m].run(f"make -C {root}",
+            stdout=f"{config['structure']['bundler_root']}/{m}.out.mk",
+            stderr=f"{config['structure']['bundler_root']}/{m}.err.mk")
 
 def bootstrap_topology(config, machines):
     config = get_interfaces(config, machines)
@@ -100,6 +101,22 @@ class MahimahiTopo:
         self.machines = machines
         self.config = config
         self.config = bootstrap_topology(config, machines)
+
+    def fetch_build_logs(self, config):
+        if self.machines is None or 'local_experiment_dir' not in config:
+            raise Exception("Tried to fetch build logs without connecting")
+
+        for m in self.machines:
+            agenda.subtask(f"fetch from {m}")
+            root = config['structure']['bundler_root']
+            if root.startswith("~/"):
+                root = root[2:]
+            self.machines[m].get(
+                f"{root}/{m}.out.mk",
+                f"{config['local_experiment_dir']}/{m}.out.mk")
+            self.machines[m].get(
+                f"{root}/{m}.err.mk",
+                f"{config['local_experiment_dir']}/{m}.err.mk")
 
     def setup_routing(self, config):
         """
@@ -258,6 +275,8 @@ class MahimahiTopo:
         return outbox_run
 
     def start_in_mahimahi(self, config, outbox, emulation_env, bundle_client, cross_client, nobundler):
+        traf_log = os.path.join(config['iteration_dir'], 'bundle_traffic.out')
+        traf_log_err = os.path.join(config['iteration_dir'], 'bundle_traffic.err')
         mm_inner = io.StringIO()
         mm_inner.write("""#!/bin/bash
 set -x
@@ -275,8 +294,8 @@ for pid in ${{pids[*]}}; do
 done
     """.format(
             outbox_run=self.start_outbox(config) if not nobundler else '',
-            cross_clients='\n'.join(["({}) &\npids+=($!)".format(c) for c in cross_client]),
-            bundle_clients='\n'.join(["({}) &\npids+=($!)".format(c) for c in bundle_client]),
+            cross_clients='\n'.join([f"({c}) &\npids+=($!)" for c in cross_client]),
+            bundle_clients='\n'.join([f"({c} > {traf_log} 2> {traf_log_err}) &\npids+=($!)" for c in bundle_client]),
         ))
 
         mm_inner_path = os.path.join(config['iteration_dir'], 'mm_inner.sh')
@@ -334,7 +353,10 @@ done
             ),
             "Failed to start mahimahi shell on receiver"
         )
-        config['iteration_outputs'].append((outbox, os.path.join(config['iteration_dir'], 'downlink.log')))
+        config['iteration_outputs'] += [
+            (outbox, os.path.join(config['iteration_dir'], 'downlink.log')),
+            (outbox, traf_log),
+            (outbox, traf_log_err)]
         if not nobundler:
             config['iteration_outputs'].append((outbox, outbox_output_location(config)))
         return config

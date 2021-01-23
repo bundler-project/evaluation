@@ -62,7 +62,7 @@ def check_ccp_alg(config, node):
             if should_recompile:
                 new_commit = node.run("git -C {} rev-parse HEAD".format(alg_dir)).stdout.strip()
                 if commit.strip() != new_commit.strip():
-                    print("updated {} -> {}".format(alg, commit[:6], new_commit[:6]))
+                    print("updated {}: {} -> {}".format(alg, commit[:6], new_commit[:6]))
 
                 agenda.subtask("compiling ccp algorithm")
                 expect(

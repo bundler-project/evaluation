@@ -119,7 +119,7 @@ def check_existing_experiment(driver):
     elements = [e.text.split()[0] for e in table.find_elements_by_xpath("//table/tbody") if len(e.text.split()) > 0]
     agenda.subtask("Existing experiment found")
     driver.find_element_by_link_text(elements[0]).click()
-    time.sleep(4)
+    time.sleep(6)
     return get_machines_from_experiment(driver)
 
 def get_machines_from_experiment(driver):

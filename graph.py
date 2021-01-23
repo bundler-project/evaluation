@@ -1,13 +1,11 @@
 import glob
 import os
 import subprocess
+import agenda
 
 def write_rmd(experiment_root, csv_name, num_ccp, downsample=None, interact=False, fields="zt, rout, rin, curr_rate, curr_q, elasticity2", rows=None, cols=None, **kwargs):
     experiment_root = os.path.abspath(os.path.expanduser(experiment_root))
     experiment_name = os.path.basename(experiment_root)
-
-    summary = os.path.join(experiment_root, 'details.md')
-    results = os.path.join(experiment_root, 'results.md')
 
     tomls = glob.glob(os.path.join(experiment_root, '*.toml'))
     assert len(tomls) == 1, f"there should be exactly 1 .toml (config) in the experiment directory: {experiment_root} -> {tomls}"
@@ -53,9 +51,12 @@ plt_m_{i} <- ggplot(df_m_{i}, aes(x=t, y=value, color=measurement)) +
     mm_plots = []
     for (i,path) in enumerate(g):
         switch_path = "/".join(path.split("/")[:-1])+"/ccp_switch.parsed"
-        if os.path.isfile(switch_path):
+        try:
+            with open(switch_path) as f:
+                if sum(1 for _ in f) < 2:
+                    raise Exception("") # goto except
             remove = ""
-        else:
+        except:
             remove = "#"
         mm_plots.append(
             mm_plt_fmt.format(
@@ -94,10 +95,10 @@ if (nrow(df) == 0) {{
 }} else {{
 df <- df %>% gather("measurement", "value", {fields})
 plt <- ggplot(df, aes(x=elapsed, y=value, color=measurement)) +
-    facet_wrap(vars({wrap_str}), labeller = labeller(.default=label_both, .multi_line=FALSE), nrow={nrow}, ncol=1) +
     geom_line() +
+    facet_wrap(~interaction(sch, alg, rate, rtt, bundle, cross, seed), labeller = labeller(.default=label_both, .multi_line=FALSE), nrow={nrow}, ncol=1) +
     scale_x_continuous(breaks=seq(0, max(df$elapsed), by=5))
-    #scale_y_continuous(breaks=seq(0, 1e+09,   by=10000000))
+
 {interact_str}ggplotly(plt)
 {static_str}plt
 }}
@@ -105,6 +106,7 @@ plt <- ggplot(df, aes(x=elapsed, y=value, color=measurement)) +
 """.format(
             csv = os.path.join(experiment_root, csv_name),
             fields = fields,
+            wrap_str_check = "1" if wrap_str is not None else "0",
             wrap_str = wrap_str,
             nrow = len(g),
             fig_height = nimbus_fig_height,
@@ -146,9 +148,6 @@ output: html_document
 }}
 </style>
 
-```{{r child='{summary}'}}
-```
-
 ```{{r, echo=FALSE}}
 suppressWarnings(suppressMessages(library(ggplot2)))
 suppressWarnings(suppressMessages(library(plotly)))
@@ -156,17 +155,16 @@ suppressWarnings(suppressMessages(library(dplyr)))
 suppressWarnings(suppressMessages(library(tidyr)))
 ```
 
-### Plots
+### Overall
+
+{fct_plots}
+
+### Per-Experiment
 
 {nimbus_plots}
-{fct_plots}
 
 #### Mahimahi
 {mm_plots}
-
-### Results
-```{{r child='{results}'}}
-```
 
 ### Config
 ```{{r config, eval=FALSE}}
@@ -174,10 +172,8 @@ suppressWarnings(suppressMessages(library(tidyr)))
 ```
 """.format(
         title = experiment_name,
-        summary = summary,
         config = config,
         grid_str = grid_str,
-        results = results,
         nimbus_plots = nimbus_plots,
         fct_plots = fct_plots,
         mm_plots = mm_plots_str,
@@ -188,12 +184,12 @@ suppressWarnings(suppressMessages(library(tidyr)))
     with open(rmd, 'w') as f:
         f.write(contents)
 
-    print("> Rendering Rmd as HTML...")
+    agenda.task("Rendering Rmd as HTML...")
     try:
         out = subprocess.check_output("R -e rmarkdown::render\"('{}', output_file='{}')\"".format(
             rmd,
             html
         ), shell=True)
     except subprocess.CalledProcessError as e:
-        print("!!! Failed to render Rmd as HTML:")
+        agenda.failure("Failed to render Rmd as HTML:")
         print(e.output.decode())

@@ -25,7 +25,7 @@ def read_config(args):
     config['etg_client_path'] = os.path.join(config['structure']['bundler_root'], "empirical-traffic-gen/bin/etgClient")
     config['etg_server_path'] = os.path.join(config['structure']['bundler_root'], "empirical-traffic-gen/run-servers.py")
     config['experiment_dir'] = os.path.join(config['experiment_root'], config['experiment_name'])
-    config['local_experiment_dir'] = os.path.join("./experiments", config['experiment_name'])
+    config['local_experiment_dir'] = os.path.join("experiments", config['experiment_name'])
     config['ccp_dir'] = os.path.join(bundler_root, 'ccp')
     return config
 
