@@ -14,10 +14,7 @@ def write_rmd(experiment_root, csv_name, num_ccp, downsample=None, interact=Fals
     with open(tomls[0], 'r') as f:
         config = f.read()
 
-    if rows:
-        wrap_str = rows
-    else:
-        wrap_str = 'rtt'
+    wrap_str = rows
 
     grid = []
     if rows:
@@ -42,7 +39,7 @@ def write_rmd(experiment_root, csv_name, num_ccp, downsample=None, interact=Fals
 **{title}**
 ```{{r mm{i}, fig.width=15, fig.align='center', echo=FALSE}}
 df_m_{i} <- read.csv("{path}", sep=" ")  # header=FALSE, col.names=c("t", "total", "delay","bundle", "cross"))
-df_m_{i} <- df_m_{i} %>% gather("measurement", "value", total, delay, bundle1, bundle2, cross)
+df_m_{i} <- df_m_{i} %>% gather("measurement", "value", total, delay, bundle, cross)
 {remove}df_switch_{i} <- read.csv("{switch_path}", sep=",")
 plt_m_{i} <- ggplot(df_m_{i}, aes(x=t, y=value, color=measurement)) +
     geom_line() +
@@ -74,7 +71,7 @@ plt_m_{i} <- ggplot(df_m_{i}, aes(x=t, y=value, color=measurement)) +
     mm_plots_str = "\n".join(mm_plots)
 
 
-    if num_ccp == 0:
+    if num_ccp == 0: 
         nimbus_plots = ""
     else:
         if len(g) < 3:
@@ -111,7 +108,7 @@ plt <- ggplot(df, aes(x=elapsed, y=value, color=measurement)) +
             static_str=static_str,
         )
 
-
+    
     fct_path = os.path.join(experiment_root, 'fcts.data')
     if os.path.isfile(fct_path):
         fct_plots = """
