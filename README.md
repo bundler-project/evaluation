@@ -7,8 +7,9 @@ If you want the exact graphs as in the paper, you can take this data and plug it
 ### What machines?
 
 The "blessed path" is to run the experiments with [Cloudlab](https://www.cloudlab.us/). We have created a ["profile"](https://www.cloudlab.us/show-profile.php?uuid=84aa948d-5b67-11eb-a9ff-e4434b2381fc) which `cloudlab/cloudlab.py` can help instantiating and managing (using chromedriver to click things). 
-This is of course optional (and `cloudlab.py` is somewhat finicky) - if you want, you can of course bring your own machines (note that AWS, Azure, GCP, etc *won't work* because the scripts need to set routing table rules) and specify in your `.toml`. 
+This is of course optional (and `cloudlab.py` is somewhat finicky) - if you want, you can of course bring your own machines (note that AWS, Azure, GCP, etc *won't work* because the scripts need to set routing table rules) and specify in your `.toml` like so:
 ```
+# manual configuration way
 [topology]
     [topology.sender]
         name = "host0"
@@ -34,6 +35,7 @@ Keep in mind that in this set of scripts, the outbox and receiver are on the sam
 
 The cloudlab way looks like this. Note that if you already have an experiment running, it will use that and not spawn a new one.
 ```
+# cloudlab.py chromedriver way
 [topology]
     [topology.cloudlab]
         username = "my-username"
