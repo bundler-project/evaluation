@@ -44,6 +44,13 @@ The cloudlab way looks like this. Note that if you already have an experiment ru
         listen_port = 28316
 ```
 
+#### cloudlab.py pitflls
+
+- You might have to edit cloudlab.py a bit (near the top of the file) to point to your Chrome.
+- The sleeps waiting for the page to load might be miscalibrated. We generally just try again.
+- `--headless` can be useful to prevent the Chrome window from popping up every time, but when first launching the cluster you don't want this, since you have to select a region. 
+- We suggest running a shorter experiment first to get the cluster up before moving on to the paper experiments.
+
 ### What from the paper can I reproduce?
 
 By using various configurations of this script, you can reproduce Figures 7, 8, 9, 10, and 12. Figures 11 and 13 involved manual setup (and more machines, for Fig 11) and we don't offer a script for them. Code to run the Fig 14 measurement is in `cloud/`, but these experiments are both expensive and prone to random variance since they run on the real Internet. If you want to run these experiments, please get in touch.

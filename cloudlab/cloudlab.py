@@ -23,9 +23,8 @@ def get_chromedriver():
     if os.path.exists("./chromedriver"):
         return
 
-    subprocess.call("wget https://chromedriver.storage.googleapis.com/75.0.3770.140/chromedriver_mac64.zip -O ./cloudlab/chromedriver.zip", shell=True)
-    subprocess.call("unzip ./cloudlab/chromedriver.zip", shell=True)
-    subprocess.call("rm ./cloudlab/chromedriver.zip", shell=True)
+    agenda.failure("Please download chromedriver corresponding to your version of Chrome")
+    raise Exception("No Chromedriver")
 
 def init_driver(username, pw, headless=False):
     get_chromedriver()
