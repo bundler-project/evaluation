@@ -2,7 +2,6 @@
 
 use color_eyre::eyre;
 use eyre::{eyre, Error, WrapErr};
-//use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -18,6 +17,9 @@ use tsunami::{Machine, Tsunami};
 struct Opt {
     #[structopt(long = "cfg", short = "f")]
     cfg: String,
+
+    #[structopt(long = "iters")]
+    iters: usize,
 
     #[structopt(long = "pause")]
     pause: bool,
@@ -55,43 +57,6 @@ struct Exp {
     to: Node,
 }
 
-fn check_path(from: &str, to: &str) -> bool {
-    let control_path_string = format!("./{}-{}/control", from, to);
-    let iperf_path_string = format!("./{}-{}/iperf", from, to);
-    let bundler_path_string = format!("./{}-{}/bundler", from, to);
-    let control_path = Path::new(control_path_string.as_str());
-    let iperf_path = Path::new(iperf_path_string.as_str());
-    let bundler_path = Path::new(bundler_path_string.as_str());
-
-    if let Err(_) = std::fs::create_dir_all(control_path) {
-        return true;
-    }
-
-    if let Err(_) = std::fs::create_dir_all(iperf_path) {
-        return true;
-    }
-
-    if let Err(_) = std::fs::create_dir_all(bundler_path) {
-        return true;
-    }
-
-    if Path::new(&control_path_string).join("bmon.log.gz").exists()
-        && Path::new(&control_path_string)
-            .join("udping.log.gz")
-            .exists()
-        && Path::new(&iperf_path_string).join("bmon.log.gz").exists()
-        && Path::new(&iperf_path_string).join("udping.log.gz").exists()
-        && Path::new(&bundler_path_string).join("bmon.log.gz").exists()
-        && Path::new(&bundler_path_string)
-            .join("udping.log.gz")
-            .exists()
-    {
-        return false;
-    } else {
-        return true;
-    }
-}
-
 async fn register_node(
     aws: &mut HashMap<String, aws::Setup>,
     az: &mut HashMap<String, azure::Setup>,
@@ -99,9 +64,9 @@ async fn register_node(
     machine_info: &mut HashMap<String, (String, String)>,
     r: Node,
 ) -> Result<String, Error> {
+    let name = r.get_name();
     match r {
         Node::Aws { region: r } => {
-            let name = format!("aws_{}", r.replace("-", ""));
             if !aws.contains_key(&name) {
                 let nm = name.clone();
                 let m = aws::Setup::default()
@@ -129,7 +94,6 @@ async fn register_node(
             Ok(name)
         }
         Node::Azure { region: r } => {
-            let name = format!("az_{}", r.replace("-", ""));
             if !az.contains_key(&name) {
                 let nm = name.clone();
                 let m = azure::Setup::default()
@@ -197,6 +161,7 @@ async fn main() -> Result<(), Error> {
     color_eyre::install()?;
     let opt = Opt::from_args();
     let pause = opt.pause;
+    let num_iters = opt.iters;
 
     let mut pairs = vec![];
     let mut aws = HashMap::new();
@@ -207,15 +172,11 @@ async fn main() -> Result<(), Error> {
     let r = std::io::BufReader::new(f);
     let u: Vec<Exp> = serde_json::from_reader(r)?;
     for r in u {
-        if check_path(&r.from.get_name(), &r.to.get_name()) {
-            let from_name =
-                register_node(&mut aws, &mut azure, &mut bare, &mut machine_info, r.from).await?;
-            let to_name =
-                register_node(&mut aws, &mut azure, &mut bare, &mut machine_info, r.to).await?;
-            pairs.push((from_name, to_name));
-        } else {
-            info!(sender = ?&r.from.get_name(), recevier = ?&r.to.get_name(), "skipping experiment");
-        }
+        let from_name =
+            register_node(&mut aws, &mut azure, &mut bare, &mut machine_info, r.from).await?;
+        let to_name =
+            register_node(&mut aws, &mut azure, &mut bare, &mut machine_info, r.to).await?;
+        pairs.push((from_name, to_name));
     }
 
     info!("starting machines");
@@ -333,88 +294,84 @@ async fn main() -> Result<(), Error> {
                         user: &receiver_user,
                     };
 
-                    cloud::reset(&sender_node, &receiver_node).await;
-                    let scamper_path_string = format!("./{}-{}/", from, to);
-                    let scamper_path = Path::new(scamper_path_string.as_str());
-                    std::fs::create_dir_all(scamper_path)?;
-                    if Path::new(&scamper_path_string)
-                        .join(format!(
-                            "{}-{}.warts.gz",
-                            sender.public_ip, receiver.public_ip
-                        ))
-                        .exists()
-                    {
-                        info!("scamper done, skipping");
-                    } else {
-                        info!("skipping scamper");
-                        //cloud::do_traceroute(&scamper_path, &sender_node, &receiver_node).await?;
-                        //info!("done running scamper");
-                    }
+                    for i in 0..num_iters {
+                        cloud::reset(&sender_node, &receiver_node).await;
 
-                    let control_path_string = format!("./{}-{}/control", from, to);
-                    let control_path = Path::new(control_path_string.as_str());
-                    std::fs::create_dir_all(control_path)?;
+                        let control_path_string = format!("./{}-{}-{}/control", from, to, i);
+                        let control_path = Path::new(control_path_string.as_str());
+                        std::fs::create_dir_all(control_path)?;
 
-                    if Path::new(&control_path_string).join("bmon.log.gz").exists()
-                        && Path::new(&control_path_string)
-                            .join("udping.log.gz")
-                            .exists()
-                    {
-                        info!("skipping control experiment");
-                    } else {
-                        info!("running control experiment");
-                        cloud::nobundler_exp_control(&control_path, &sender_node, &receiver_node)
+                        if Path::new(&control_path_string).join("bmon.log.gz").exists()
+                            && Path::new(&control_path_string)
+                                .join("udping.log.gz")
+                                .exists()
+                        {
+                            info!("skipping control experiment");
+                        } else {
+                            info!("running control experiment");
+                            cloud::nobundler_exp_control(
+                                &control_path,
+                                &sender_node,
+                                &receiver_node,
+                            )
                             .instrument(tracing::info_span!("control_exp"))
                             .await
-                            .wrap_err(eyre!("control experiment {} -> {}", &from, &to))?;
-                        info!("control experiment done");
-                        cloud::reset(&sender_node, &receiver_node).await;
-                    }
+                            .wrap_err(eyre!(
+                                "control experiment {} -> {}",
+                                &from,
+                                &to
+                            ))?;
+                            info!("control experiment done");
+                            cloud::reset(&sender_node, &receiver_node).await;
+                        }
 
-                    let iperf_path_string = format!("./{}-{}/iperf", from, to);
-                    let iperf_path = Path::new(iperf_path_string.as_str());
-                    std::fs::create_dir_all(iperf_path)?;
-                    if Path::new(&iperf_path_string).join("bmon.log.gz").exists()
-                        && Path::new(&iperf_path_string).join("udping.log.gz").exists()
-                    {
-                        info!("skipping iperf experiment");
-                    } else {
-                        info!("running iperf experiment");
-                        cloud::nobundler_exp_iperf(&iperf_path, &sender_node, &receiver_node)
-                            .instrument(tracing::info_span!("nobundler_iperf"))
+                        let iperf_path_string = format!("./{}-{}-{}/iperf", from, to, i);
+                        let iperf_path = Path::new(iperf_path_string.as_str());
+                        std::fs::create_dir_all(iperf_path)?;
+                        if Path::new(&iperf_path_string).join("bmon.log.gz").exists()
+                            && Path::new(&iperf_path_string).join("udping.log.gz").exists()
+                        {
+                            info!("skipping iperf experiment");
+                        } else {
+                            info!("running iperf experiment");
+                            cloud::nobundler_exp_iperf(&iperf_path, &sender_node, &receiver_node)
+                                .instrument(tracing::info_span!("nobundler_iperf"))
+                                .await
+                                .wrap_err(eyre!("iperf experiment {} -> {}", &from, &to))?;
+                            info!("iperf experiment done");
+                            cloud::reset(&sender_node, &receiver_node).await;
+                        }
+
+                        let bundler_path_string = format!("./{}-{}-{}/bundler", from, to, i);
+                        let bundler_path = Path::new(bundler_path_string.as_str());
+                        std::fs::create_dir_all(bundler_path)?;
+                        if Path::new(&bundler_path_string).join("bmon.log.gz").exists()
+                            && Path::new(&bundler_path_string)
+                                .join("udping.log.gz")
+                                .exists()
+                        {
+                            info!("skipping bundler experiment");
+                        } else {
+                            //info!("skipping bundler experiment");
+                            info!("running bundler experiment");
+                            cloud::bundler_exp_iperf(
+                                &bundler_path,
+                                &sender_node,
+                                &receiver_node,
+                                "sfq",
+                                "1000mbit",
+                            )
                             .await
-                            .wrap_err(eyre!("iperf experiment {} -> {}", &from, &to))?;
-                        info!("iperf experiment done");
-                        cloud::reset(&sender_node, &receiver_node).await;
-                    }
+                            .wrap_err(eyre!(
+                                "bundler experiment {} -> {}",
+                                &from,
+                                &to
+                            ))?;
+                            info!("bundler experiment done");
+                            cloud::reset(&sender_node, &receiver_node).await;
+                        }
 
-                    let bundler_path_string = format!("./{}-{}/bundler", from, to);
-                    let bundler_path = Path::new(bundler_path_string.as_str());
-                    std::fs::create_dir_all(bundler_path)?;
-                    if Path::new(&bundler_path_string).join("bmon.log.gz").exists()
-                        && Path::new(&bundler_path_string)
-                            .join("udping.log.gz")
-                            .exists()
-                    {
-                        info!("skipping bundler experiment");
-                    } else {
-                        //info!("skipping bundler experiment");
-                        info!("running bundler experiment");
-                        cloud::bundler_exp_iperf(
-                            &bundler_path,
-                            &sender_node,
-                            &receiver_node,
-                            "sfq",
-                            "1000mbit",
-                        )
-                        .await
-                        .wrap_err(eyre!(
-                            "bundler experiment {} -> {}",
-                            &from,
-                            &to
-                        ))?;
-                        info!("bundler experiment done");
-                        cloud::reset(&sender_node, &receiver_node).await;
+                        info!(iter = ?i, "finished iteration");
                     }
 
                     info!("done");
@@ -441,33 +398,26 @@ async fn main() -> Result<(), Error> {
     az_launcher.terminate_all().await?;
 
     res?;
-    info!("collecting logs");
 
-    std::process::Command::new("python3")
-        .arg("parse_udping.py")
-        .arg(".")
-        .spawn()?
-        .wait()?;
+    //info!("collecting logs");
+    //std::process::Command::new("python3")
+    //    .arg("parse_udping.py")
+    //    .arg(".")
+    //    .spawn()?
+    //    .wait()?;
 
-    std::process::Command::new("Rscript")
-        .arg("plot_paths.r")
-        .spawn()?
-        .wait()?;
+    //std::process::Command::new("Rscript")
+    //    .arg("plot_paths.r")
+    //    .spawn()?
+    //    .wait()?;
 
-    std::process::Command::new("python3")
-        .arg("plot_ccp.py")
-        .spawn()?
-        .wait()?;
+    //std::process::Command::new("python3")
+    //    .arg("plot_ccp.py")
+    //    .spawn()?
+    //    .wait()?;
 
     Ok(())
 }
-
-//fn matrix(vms: &HashMap<String, Machine>) -> impl Iterator<Item = (String, String)> {
-//    let names: Vec<String> = vms.keys().cloned().collect();
-//    let names2 = names.clone();
-//
-//    names.into_iter().cartesian_product(names2)
-//}
 
 fn wait_for_continue() {
     warn!("pausing for manual instance inspection, press enter to continue");

@@ -1,5 +1,66 @@
 import os, sys, json
 from itertools import permutations
+from collections import deque
+
+###############################################################################
+# Scheduling algorithm from:
+# https://en.wikipedia.org/wiki/Round-robin_tournament#Scheduling_algorithm
+
+def build_pairs(ms):
+    ms = list(ms)
+    # 1 is always in fixed position at the beginning of the line
+    ms = [1] + ms
+    mid = int(len(ms)/2)
+    l,r = ms[:mid], ms[mid:]
+    r = r[::-1]
+    pairs = [(l[i], r[i]) for i in range(mid)]
+    # NOTE: We need `opp` because paths are not necessarily symmetric.
+    #       This algorithm was designed for round-robin tournaments and thus
+    #       assumes x playing y is the same as y playing x
+    opp = [(r[i], l[i]) for i in range(mid)]
+    return pairs, opp
+
+def schedule(n):
+    schedule_a = []
+    schedule_b = []
+    # list of numbers 2,...,n 
+    # this is the set that will rotate, 1 is fixed at the front
+    ms = deque(range(2,n+1))
+
+    # there are n-1 total rounds
+    for rnd in range(n-1):
+        pairs, opp = build_pairs(ms)
+        schedule_a.append(pairs)
+        schedule_b.append(opp)
+        ms.rotate(1)
+
+    return schedule_a, schedule_b
+
+###############################################################################
+# Helper functions
+
+def name(m):
+    if 'Baremetal' in m:
+        return m['Baremetal']['name']
+    elif 'Aws' in m:
+        reg = m['Aws']['region'].replace('-', '')
+        return f'aws_{reg}'
+    elif 'Azure' in m:
+        reg = m['Azure']['region']
+        return f'az_{reg}'
+    else:
+        assert False
+
+def already_done(src, dst):
+    base_dir = os.path.dirname(filename)
+    dirname = base_dir.join(f"{name(src)}-{name(dst)}")
+    if not os.path.exists(dirname):
+        return False
+    fs = [[x, 'udping.log'] for x in ['control', 'iperf']]
+    return all(os.path.exists(os.path.join(dirname, *f)) for f in fs)
+
+###############################################################################
+# Main
 
 if len(sys.argv) != 2:
     print(f"usage: python3 {sys.argv[0]} [machines.json]")
@@ -8,52 +69,34 @@ filename = sys.argv[1]
 with open(filename) as f:
     machines = json.loads(f.read())
 
-def lookup_pair_rtt(src, dst):
-    with open("minrtts.out", 'r') as f:
-        for line in f:
-            frm, to, _, _ = line.split()
-            if src not in machines or dst not in machines:
-                continue
-            print(src, dst, frm, to)
-            if frm == list(machines[src].values())[0]['name'] and to == list(machines[dst].values())[0]['name']:
-                return True
-        return False
+machines = {i+1: m for i,m in zip(range(len(machines)), machines)}
+n = len(machines.keys())
+print(f"==> Found {n} machines in {filename}\n")
 
-machines = {i: m for i,m in zip(range(len(machines)), machines)}
+sa, sb = schedule(n)
 
-all_pairs = list(permutations(machines.keys(), 2))
-pairs_done = set()
-num_pairs = len(all_pairs)
-groups = []
-group_size = 5
+# sanity check that all pairs have been used in the schedule
+flat = set(sum(sa, [])) | set(sum(sb, []))
+all_pairs = set(permutations(machines.keys(), 2))
+assert(flat == all_pairs)
 
-while len(all_pairs) > 0:
-    i = 0
-    curr_group = []
-    machines_in_use = set()
-
-    while len(curr_group) < group_size:
-        if i >= len(all_pairs):
-            break
-        src, dst = all_pairs[i]
-        if not src in machines_in_use and not dst in machines_in_use:
-            pair = all_pairs.pop(i)
-            #if lookup_pair_rtt(src, dst):
-            pairs_done.add(pair)
-            curr_group.append(pair)
-            machines_in_use.add(src)
-            machines_in_use.add(dst)
-        else:
-            i+=1
-
-    groups.append(curr_group)
-
-phase = 1
-for group in groups:
-    with open(f"phase_{phase}.json", 'w') as f:
+def write_phase(name, pairs):
+    print(f"{name}: {len(pairs)} pairs")
+    with open(name, 'w') as f:
         objs = []
-        for (src,dst) in group:
-            obj = {"from" : machines[src], "to" : machines[dst]}
-            objs.append(obj)
+        for (src,dst) in pairs:
+            if not already_done(machines[src], machines[dst]):
+                obj = {"from" : machines[src], "to" : machines[dst]}
+                objs.append(obj)
+        if len(objs) == 0:
+            print("> All pairs in Phase {phase} already completed, file will be empty.")
         f.write(json.dumps(objs))
-    phase+=1
+
+# write the schedule to phase files
+phase = 1
+for i in range(len(sa)):
+    pairs = sa[i]
+    opp = sb[i]
+    write_phase(f"phase_{phase}a.json", pairs)
+    write_phase(f"phase_{phase}b.json", opp)
+    phase += 1

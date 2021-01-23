@@ -1,7 +1,8 @@
-*.toml
 __pycache__/
 curr_url
 experiments
 lib/
 bin/
 share/
+*.toml
+!**/Cargo.toml

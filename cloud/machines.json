@@ -1,21 +1,26 @@
 [
-    {"Baremetal": {"ip": "35.210.217.77", "name" : "gcp_belgium", "user": "akshayn", "iface": "ens4"}},
-    {"Baremetal": {"ip": "35.207.134.233", "name" : "gcp_frankfurt", "user": "akshayn", "iface": "ens4"}},
-    {"Baremetal": {"ip": "35.209.9.121", "name" : "gcp_iowa", "user": "akshayn", "iface": "ens4"}},
-    {"Baremetal": {"ip": "35.212.230.186", "name" : "gcp_oregon", "user": "akshayn", "iface": "ens4"}},
-    {"Baremetal": {"ip": "35.211.12.248", "name" : "gcp_southcarolina", "user": "akshayn", "iface": "ens4"}},
-    {"Baremetal": {"ip": "35.213.50.103", "name" : "gcp_tokyo", "user": "akshayn", "iface": "ens4"}},
-    {"Aws": {"region": "us-east-2"}},
-    {"Aws": {"region": "us-west-1"}},
-	{"Aws": {"region": "ca-central-1"}},
-	{"Aws": {"region": "eu-central-1"}},
-	{"Aws": {"region": "eu-west-1"}},
-	{"Aws": {"region": "eu-north-1"}},
-	{"Aws": {"region": "ap-northeast-1"}},
-	{"Aws": {"region": "ap-southeast-2"}},
-	{"Aws": {"region": "ap-south-1"}},
-    {"Baremetal": {"ip": "169.229.49.104", "name" : "berkeley_c4", "user": "akshay", "iface": "eth8"}},
-    {"Baremetal": {"ip": "128.110.154.130", "name": "cloudlab_utah", "user": "akshayn", "iface": "eno49"}},
-    {"Baremetal": {"ip": "132.227.122.227", "name": "cloudlab_paris", "user": "akshayn", "iface": "enp1s0"}},
-    {"Baremetal": {"ip": "128.52.173.58", "name": "mit_openstack", "user": "akshay", "iface": "ens3"}},
+    {"Baremetal": {
+        "name": "gcp_socal", "ip": "35.215.72.82", "user": "akshayn", "iface": "ens4"
+    }},
+    {"Baremetal": {
+        "name": "gcp_finland", "ip": "35.217.60.85", "user": "akshayn", "iface": "ens4"
+    }},
+    {"Baremetal": {
+        "name": "gcp_iowa", "ip": "35.208.147.115", "user": "akshayn", "iface": "ens4"
+    }},
+    {"Baremetal": {
+        "name": "gcp_frankfurt", "ip": "35.207.103.197", "user": "akshayn", "iface": "ens4"
+    }},
+    {"Baremetal": {
+        "name": "gcp_tokyo", "ip": "35.210.191.91", "user": "akshayn", "iface": "ens4"
+    }},
+    {"Baremetal": {
+        "name": "vultr_tokyo", "ip": "167.179.69.246", "user": "ubuntu", "iface": "ens3"
+    }},
+    {"Baremetal": {
+        "name": "vultr_singapore", "ip": "45.76.148.123", "user": "ubuntu", "iface": "ens3"
+    }},
+    {"Baremetal": {
+        "name": "vultr_sydney", "ip": "139.180.173.52", "user": "ubuntu", "iface": "ens3"
+    }}
 ]
