@@ -135,7 +135,6 @@ cloudlab_conn_rgx = re.compile(r"ssh -p (?P<port>[0-9]+) (?P<user>[a-z0-9]+)@(?P
 # sender, inbox, outbox, receiver
 def make_cloudlab_topology(config, headless=False):
     agenda.section("Setup Cloudlab topology")
-    listen_port = config['topology']['inbox']['listen_port']
 
     agenda.subtask(f"headless: {headless}")
     driver = init_driver(
@@ -149,9 +148,10 @@ def make_cloudlab_topology(config, headless=False):
         machines = launch(driver)
 
     machines = [cloudlab_conn_rgx.match(m).groupdict() for m in machines if 'cloudlab.us' in m]
-    config['topology']['sender'] = machines[0]
-    config['topology']['inbox'] = machines[1]
-    config['topology']['inbox']['listen_port'] = listen_port
-    config['topology']['outbox'] = machines[2]
-    config['topology']['receiver'] = machines[2]
+
+    for (name, host_id) in zip(['sender', 'inbox', 'outbox', 'receiver'], [0,1,2,2]):
+        overrides = config['topology'][name]
+        config['topology'][name] = machines[host_id]
+        for (k,v) in overrides.items():
+            config['topology'][name][k] = v
     return config
