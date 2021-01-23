@@ -8,10 +8,9 @@ Our scripts for re-creating the plots exactly as they appeared in the paper are 
 
 1. Decide which machines you will use for the experiment ("What machines?")
 2. Install dependencies on the machine that will be orchestrating the experiments and plotting graphs, e.g. your local machine ("Local dependencies"). Running an experiment will automatically install necessary dependencies on the experiment hosts.
-3. Run an instance of `eval.py` ("Running an experiment") with the `--dry-run` flag to start. If you run into any issues with launching an experiment, return to this step to debug.
-4. Run an instance of `eval.py` with a very simple config to ensure everything is working properly.
-5. Run an instance of `eval.py` with one of the paper experiment configs, then view results in a web browser.
-6. (Optional): to match the aesthetics of the paper graphs and axes, copy the experiment data into the paper repo (see above) and build the paper.
+3. Pick an experiment to run / config file to use, and edit the top of the config file with your credentials or host details. See "What machines?" for an example.
+3. Run an instance of `eval.py` (see "Running experiments") with your config, wait patiently (some of them take a long time!), then view results in a web browser.
+4. (Optional): to match the aesthetics of the paper graphs and axes, copy the experiment data into the paper repo (see above) and build the paper.
 
 ### What machines?
 
@@ -64,7 +63,7 @@ The cloudlab way looks like this. Note that if you already have an experiment ru
 
 ### What from the paper can I reproduce?
 
-By using various config files (`configs/fig*.toml`), you can reproduce Figures 7, 8, 9, 10, and 12. Figures 11 and 13 involved manual setup (and more machines, for Fig 11) and we don't offer a script for them. Code to run the Fig 14 measurements is in `cloud/`, but these experiments are both expensive and prone to random variance since they run on the real Internet. If you want to run these experiments, please get in touch.
+By using various config files (`configs/fig*.toml`), you can easily reproduce the data from Figures 6-13, except 11. Figure 11 involved manual setup (and more machines), so we don't offer a script for it. Code to run the Figure 14 measurements is in `cloud/`, but these experiments are both expensive and prone to random variance since they run on the real Internet. If you want to run these experiments, please get in touch.
 
 ### Local dependencies
 
@@ -86,8 +85,10 @@ These are local dependencies to run the experiment script and parse the outputs 
 
 The experiment script can be launched from any machine (including one of the experiment hosts). The only requirement is that this machine has password-less ssh access to all of the experiments hosts. It will internally create an ssh shell with each host at the beginning and use this to orchestrate the experiment.
 
+For example, to recreate 
+
 ```
-python3 eval.py --name fig7 recreate.toml (--headless) (--verbose)
+python3 eval.py --name fig7 config/fig7.toml (--headless) (--verbose)
 ```
 
 The `.toml` file controls the experiment. You can add bundle traffic, cross traffic, change parameters, etc. The lists in the `[experiment]` section will be run in all-combinations, so, for example, the currently committed version of Figure 7 will run (10 iterations) * (2 scheduling algs) * (2 algorithms) = 40 experiments. 100k poisson flows at 7/8ths load generally takes around 5 minutes, so this is a 200 minute experiment in total.
