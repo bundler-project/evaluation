@@ -1,0 +1,84 @@
+[topology]
+    [topology.cloudlab]
+        username = "my-username"
+        password = "my-cloudlab-password"
+    [topology.inbox]
+        listen_port = 28316
+# use to manually specify nodes
+#[topology]
+#    [topology.sender]
+#        name = "host0"
+#        ifaces = [{dev = "eth0", addr = "10.0.0.1"}]
+#    [topology.inbox]
+#        name = "host1"
+#        user = "my-username"
+#        ifaces = [
+#            {dev = "eth0", addr = "10.0.0.2"},
+#            {dev = "eth1", addr = "10.0.1.1"},
+#        ]
+#        listen_port = 28316
+#        self = true
+#    [topology.outbox]
+#        name = "host2"
+#        ifaces = [{dev = "eth0", addr = "10.0.1.2"}]
+#    [topology.receiver]
+#        name = "host2"
+#        ifaces = [{dev = "eth0", addr = "10.0.1.2"}]
+
+[sysctl]
+"net.ipv4.tcp_rmem" = "4096 87380   6291456"
+"net.ipv4.tcp_wmem" = "4096 16384   4194304"
+"net.core.wmem_max" = "212992"
+"net.core.rmem_max" = "212992"
+
+[parameters]
+initial_sample_rate = 128
+bg_port_start = 5000
+bg_port_end = 6000
+qdisc_buf_size = "15mbit"
+fifo_downlink = { queue = "codel", args="target=100,interval=5,packets=2000" }
+fifo_uplink = { queue = "droptail" }
+
+[structure]
+bundler_root = "~/bundler-script"
+
+[distributions]
+CAIDA_CDF = "~/bundler-script/distributions/CAIDA_CDF"
+
+[ccp]
+    [ccp.nimbus]
+        repo = "https://github.com/ccp-project/nimbus.git"
+        branch = "queue-control"
+        commit = "latest"
+        language = "rust"
+        target = "target/debug/nimbus"
+        [ccp.nimbus.args]
+            flow_mode = "Delay"
+            loss_mode = "Bundle"
+            bw_est_mode = "false"
+            bundler_qlen_alpha=100
+            bundler_qlen_beta=10000
+            use_switching= "false"
+            pass_through = "false"
+            bundler_qlen = 150
+    [ccp.const]
+        repo = "https://github.com/ccp-project/const.git"
+        branch = "master"
+        commit = "latest"
+        language = "rust"
+        target = "target/release/ccp_const"
+
+[experiment]
+seed      = [0, 17, 26, 28, 41, 62, 67, 68, 88, 99]
+sch       = ['fifo', 'sfq']
+alg       = [
+    { name = "nobundler" },
+    { name = "nimbus", delay_mode = ["Nimbus","Copa"] },
+]
+rate      = [96]
+rtt       = [50]
+bdp       = [3]
+bundle_traffic = [
+    [{source = 'poisson', conns = 200, reqs = 100000, alg = 'cubic', dist = 'CAIDA_CDF', backlogged = 0, load = '7/8', start_delay = 0, start_port=5000}]
+]
+cross_traffic = [[]]
