@@ -28,10 +28,10 @@
 #        ifaces = [{dev = "eth0", addr = "10.0.1.2"}]
 
 [sysctl]
-"net.ipv4.tcp_rmem" = "4096 87380   6291456"
-"net.ipv4.tcp_wmem" = "4096 16384   4194304"
-"net.core.wmem_max" = "212992"
-"net.core.rmem_max" = "212992"
+"net.ipv4.tcp_rmem" = "4096000 4096000 12582912"
+"net.ipv4.tcp_wmem" = "4096000 4096000 12582912"
+"net.core.wmem_max" = "12582912"
+"net.core.rmem_max" = "12582912"
 
 [parameters]
 initial_sample_rate = 128

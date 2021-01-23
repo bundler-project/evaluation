@@ -1,6 +1,6 @@
 # Reproduce Bundler Experiments
 
-This repository contains scripts that help run the Bundler experiments from our [EuroSys '21 paper](https://arxiv.org/pdf/2011.01258.pdf). The scripts in this repo (primarily `eval.py`) will take you from a toml config file (like `cloudlab.toml`, in the root of this repo) and give you an HTML report of the experiment you ran. We provide a separate config file for each experiment in `configs/fig*.toml`
+This repository contains scripts that help run the Bundler experiments from our [EuroSys '21 paper](https://arxiv.org/pdf/2011.01258.pdf). The scripts in this repo (primarily `eval.py`) will take you from a toml config file (like `configs/fig7.toml`) and give you an HTML report of the experiment you ran. We provide a separate config file for each experiment in `configs/fig*.toml`
 
 Our scripts for re-creating the plots exactly as they appeared in the paper are in our [paper repo](https://github.com/bundler-project/writing). The easiest way to run them is to (1) copy your experiment output files into `[paper_repo]/graphs/data`, then (2) build the paper (i.e. run `make` in the root of the paper repo). This will automatically create the graphs.
 
