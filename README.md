@@ -9,8 +9,8 @@ Our scripts for re-creating the plots exactly as they appeared in the paper are 
 1. Decide which machines you will use for the experiment ("What machines?")
 2. Install dependencies on the machine that will be orchestrating the experiments and plotting graphs, e.g. your local machine ("Local dependencies"). Running an experiment will automatically install necessary dependencies on the experiment hosts.
 3. Pick an experiment to run / config file to use, and edit the top of the config file with your credentials or host details. See "What machines?" for an example.
-3. Run an instance of `eval.py` (see "Running experiments") with your config, wait patiently (some of them take a long time!), then view results in a web browser.
-4. (Optional): to match the aesthetics of the paper graphs and axes, copy the experiment data into the paper repo (see above) and build the paper.
+4. Run an instance of `eval.py` (see "Running experiments") with your config, wait patiently (some of them take a long time!), then view results in a web browser.
+5. (Optional): to match the aesthetics of the paper graphs and axes, copy the experiment data into the paper repo (see above) and build the paper ("Paper Repo").
 
 ### What machines?
 
@@ -63,7 +63,7 @@ The cloudlab way looks like this. Note that if you already have an experiment ru
 
 ### What from the paper can I reproduce?
 
-By using various config files (`configs/fig*.toml`), you can easily reproduce the data from Figures 6-13, except 11. Figure 11 involved manual setup (and more machines), so we don't offer a script for it. Code to run the Figure 14 measurements is in `cloud/`, but these experiments are both expensive and prone to random variance since they run on the real Internet. If you want to run these experiments, please get in touch.
+By using various config files (`configs/fig*.toml`), you can reproduce the data from Figures 6-13, except 11. Figure 11 involved manual setup (and more machines), so we don't offer a script for it. Code to run the Figure 14 measurements is in `cloud/`, but these experiments are both expensive and prone to random variance since they run on the real Internet. If you want to run these experiments, please get in touch.
 
 ### Local dependencies
 
@@ -100,3 +100,47 @@ python3 parse_outputs.py experiments/fig7 --bundler_root=`pwd` --interact
 ```
 
 the graphs will become interactive. If there are many graphs in the experiment, this can be slow, so it is not the default.
+
+### Matching Paper Aesthetics
+
+Generally, the experiment report will plot a CDF, while the paper graphs use boxplots. This is the correspondence from graph to expected data filename in [that repo](https://github.com/bundler-project/writing):
+
+#### Fig 7
+
+Config file: `config/fig7.toml` 
+Relevant experiment data: `experiments/<expname>/fcts.data` 
+Paper expected data location: `graphs/data/overview-benefits.data`
+Paper plotting script: `graphs/overview-benefits.Rnw` 
+
+#### Fig 8
+Config file: `config/fig8.toml`
+Relevant experiment data: `experiments/<expname>/<iteration_dir>/downlink.log`, `experiments/<expname>/fcts.data` 
+Paper expected data location: `big_exp/big_exp_41/bundler.mm`, `big_exp/big_exp_41/fcts.data`
+
+#### Fig 9
+
+Config file: `config/fig9-bundler.toml`, `config/fig9-status-quo.toml` (put results in same experiment dir with --skip-existing)
+Relevant experiment data: `experiments/<expname>/fcts.data` 
+Paper expected data location: `graphs/data/vary_inelastic.data`
+Paper plotting script: `graphs/inelastic-cross.Rnw` 
+
+#### Fig 10
+
+Config file: `config/fig10.toml`
+Relevant experiment data: TODO
+Paper expected data location: `graphs/data/vary_elastic.data`
+Paper plotting script: `graphs/elastic-cross.Rnw` 
+
+#### Fig 12
+
+Config file: `config/fig11.toml`
+Relevant experiment data: `experiments/<expname>/fcts.data` 
+Paper expected data location: `graphs/data/bundler_cc_alg_choice.data`
+Paper plotting script: `graphs/congestion-control.Rnw` 
+
+#### Fig 13
+
+Config file: `config/fig13.toml`
+Relevant experiment data: `experiments/<expname>/fcts.data` 
+Paper expected data location: `graphs/proxy.data`
+Paper plotting script: `graphs/proxy.Rnw` 
