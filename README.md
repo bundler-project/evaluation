@@ -106,41 +106,37 @@ the graphs will become interactive. If there are many graphs in the experiment, 
 Generally, the experiment report will plot a CDF, while the paper graphs use boxplots. This is the correspondence from graph to expected data filename in [that repo](https://github.com/bundler-project/writing):
 
 #### Fig 7
-
-Config file: `config/fig7.toml` 
-Relevant experiment data: `experiments/<expname>/fcts.data` 
-Paper expected data location: `graphs/data/overview-benefits.data`
-Paper plotting script: `graphs/overview-benefits.Rnw` 
+* Config file: `config/fig7.toml` 
+* Relevant experiment data: `experiments/<expname>/fcts.data` 
+* Paper expected data location: `graphs/data/overview-benefits.data`
+* Paper plotting script: `graphs/overview-benefits.Rnw` 
 
 #### Fig 8
-Config file: `config/fig8.toml`
-Relevant experiment data: `experiments/<expname>/<iteration_dir>/downlink.log`, `experiments/<expname>/fcts.data` 
-Paper expected data location: `big_exp/big_exp_41/bundler.mm`, `big_exp/big_exp_41/fcts.data`
+* Config file: `config/fig8.toml`
+* Relevant experiment data: `experiments/<expname>/<iteration_dir>/downlink.log`, `experiments/<expname>/fcts.data` 
+* Paper expected data location: `big_exp/big_exp_41/bundler.mm`, `big_exp/big_exp_41/fcts.data`
 
 #### Fig 9
-
-Config file: `config/fig9-bundler.toml`, `config/fig9-status-quo.toml` (put results in same experiment dir with --skip-existing)
-Relevant experiment data: `experiments/<expname>/fcts.data` 
-Paper expected data location: `graphs/data/vary_inelastic.data`
-Paper plotting script: `graphs/inelastic-cross.Rnw` 
+* Config file: `config/fig9-bundler.toml`, `config/fig9-status-quo.toml` (put results in same experiment dir with --skip-existing)
+* Relevant experiment data: `experiments/<expname>/fcts.data` 
+* Paper expected data location: `graphs/data/vary_inelastic.data`
+* Paper plotting script: `graphs/inelastic-cross.Rnw` 
 
 #### Fig 10
-
-Config file: `config/fig10.toml`
-Relevant experiment data: TODO
-Paper expected data location: `graphs/data/vary_elastic.data`
-Paper plotting script: `graphs/elastic-cross.Rnw` 
+* Config file: `config/fig10.toml`
+* Relevant experiment data: `experiments/<expname>/<iteration_dir>/downlink.log`
+* Parse experiment data with: `python parse_fig10.py experiments/<expname>`
+* Paper expected data location: `graphs/data/vary_elastic.data`
+* Paper plotting script: `graphs/elastic-cross.Rnw` 
 
 #### Fig 12
-
-Config file: `config/fig11.toml`
-Relevant experiment data: `experiments/<expname>/fcts.data` 
-Paper expected data location: `graphs/data/bundler_cc_alg_choice.data`
-Paper plotting script: `graphs/congestion-control.Rnw` 
+* Config file: `config/fig11.toml`
+* Relevant experiment data: `experiments/<expname>/fcts.data` 
+* Paper expected data location: `graphs/data/bundler_cc_alg_choice.data`
+* Paper plotting script: `graphs/congestion-control.Rnw` 
 
 #### Fig 13
-
-Config file: `config/fig13.toml`
-Relevant experiment data: `experiments/<expname>/fcts.data` 
-Paper expected data location: `graphs/proxy.data`
-Paper plotting script: `graphs/proxy.Rnw` 
+* Config file: `config/fig13.toml`
+* Relevant experiment data: `experiments/<expname>/fcts.data` 
+* Paper expected data location: `graphs/proxy.data`
+* Paper plotting script: `graphs/proxy.Rnw` 
