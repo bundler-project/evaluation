@@ -1,8 +1,6 @@
 # Reproduce Bundler Experiments
 
-This repository contains scripts that help run the Bundler experiments from our [EuroSys '21 paper](https://arxiv.org/pdf/2011.01258.pdf). The scripts in this repo (primarily [`eval.py`](eval.py)) will take you from a toml config file (like `configs/fig7.toml`) and give you an HTML report of the experiment you ran. We provide a separate config file for each experiment in `configs/fig*.toml`
-
-Our scripts for re-creating the plots exactly as they appeared in the paper are in our [paper repo](https://github.com/bundler-project/writing). The easiest way to run them is to (1) copy your experiment output files into `[paper_repo]/graphs/data`, then (2) build the paper (i.e. run `make` in the root of the paper repo). This will automatically create the graphs.
+This repository contains scripts that help run the Bundler experiments from our [EuroSys '21 paper](https://arxiv.org/pdf/2011.01258.pdf). [`eval.py`](eval.py) takes as input a toml file describing an experiment (like [`configs/fig7.toml`](configs/fig7.toml)) and produces an HTML report of the experiment you ran which you can view in a web browser. We provide a separate config file for each experiment in `configs/fig*.toml`
 
 ## Overview
 
@@ -10,7 +8,23 @@ Our scripts for re-creating the plots exactly as they appeared in the paper are 
 2. Install dependencies on the machine that will be orchestrating the experiments and plotting graphs, e.g. your local machine (see ["Local dependencies"](#local-dependencies)). Running an experiment will automatically clone this repository and install necessary experiment dependencies (Rust, mahimahi, etc) on the experiment hosts.
 3. Pick an experiment to run / config file to use, and edit the top of the config file with your credentials or host details. See below for an example.
 4. Run an instance of `eval.py` (see ["Running an Experiment"](#running-an-experiment)) with your config, wait patiently (some of them take multiple hours!), then view results in a web browser.
-5. (Optional): to match the aesthetics of the paper graphs and axes, copy the experiment data into the paper repo and build the paper (see ["Matching paper aesthetics"](#matching-paper-aesthetics)).
+5. (Optional): To match the aesthetics of the paper graphs and axes, copy the experiment data into the [paper repo](https://github.com/bundler-project/writing) and build the paper (see ["Matching paper aesthetics"](#matching-paper-aesthetics)).
+
+## Local dependencies
+
+These are local dependencies to run the experiment script and parse the outputs into a report with a graph.
+
+- [Python 3.9.0](https://www.python.org/)
+  - See [requirements.txt](requirements.txt)
+- [R 4.0.3](https://www.r-project.org/) (packages all available on cran)
+  - ggplot2
+  - dplyr
+  - tidyr
+  - patchwork
+  - rmarkdown
+  - plotly
+- ChromeDriver 88.0.4324.96 (required to use cloudlab/cloudlab.py)
+  - The `chromedriver` binary should be put in the toplevel directory of this repo.
 
 ## What machines?
 
@@ -61,23 +75,6 @@ The cloudlab way looks like this. Note that if you already have an experiment ru
 - `--headless` can be useful to prevent the Chrome window from popping up every time, but when first launching the cluster you don't want this, since you have to select a region. 
 - We suggest running a shorter experiment first to get the cluster up before moving on to the paper experiments. The experiment script automatically checks for and installs any missing dependencies on each run, so there is no explicit setup script.
 
-
-## Local dependencies
-
-These are local dependencies to run the experiment script and parse the outputs into a report with a graph.
-
-- Python 3.9.0
-  - See [requirements.txt](requirements.txt)
-- R 4.0.3 (packages all available on cran)
-  - ggplot2
-  - dplyr
-  - tidyr
-  - patchwork
-  - rmarkdown
-  - plotly
-- ChromeDriver 88.0.4324.96 (optional, but cloudlab/cloudlab.py assumes it exists)
-  - The `chromedriver` binary should be put in the toplevel directory of this repo.
-
 ## Running an experiment
 
 The experiment script can be launched from any machine (including one of the experiment hosts). The only requirement is that this machine has password-less ssh access to all of the experiments hosts. It will internally create an ssh shell with each host at the beginning and use this to orchestrate the experiment.
@@ -100,7 +97,7 @@ the graphs will become interactive (panning, zooming, etc). If there are many gr
 
 ### What from the paper can I reproduce?
 
-By using various config files (`configs/fig*.toml`), you can reproduce the data from Figures 6-13, except 11. Figure 11 involved manual setup (and more machines), so we don't offer a script for it. Code to run the Figure 14 measurements is in `cloud/`, but these experiments are both expensive and prone to random variance since they run on the real Internet. If you want to run these experiments, please get in touch.
+By using various config files (`configs/fig*.toml`), you can reproduce the data from Figures 6-13, except 11. Figure 11 involved manual setup (and more machines), so we don't offer a script for it. Code to run the Figure 14 measurements is in [`cloud/`](./cloud), but these experiments are both expensive and prone to random variance since they run on the real Internet. If you want to run these experiments, please get in touch.
 
 ### Matching Paper Aesthetics
 
