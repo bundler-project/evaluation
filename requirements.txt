@@ -23,5 +23,5 @@ selenium==3.141.0
 six==1.15.0
 termcolor==1.1.0
 toml==0.10.2
-urllib3==1.26.2
+urllib3==1.26.3
 zulip==0.7.1
