@@ -162,7 +162,7 @@ pub async fn bundler_exp_iperf(
 
     // start nimbus
     // wait for inbox to get ready
-    tokio::time::delay_for(tokio::time::Duration::from_secs(5)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
     // start nimbus
     sender.ssh.shell(&format!("cd ~/tools/nimbus && sudo screen -d -m bash -c \"./target/debug/nimbus --ipc=unix --loss_mode=Bundle --delay_mode=Nimbus --flow_mode=Delay --uest=875000000 --bundler_qlen_alpha=100 --bundler_qlen_beta=10000 --bundler_qlen=1000 > {}/ccp.out 2> {}/ccp.out\"",
@@ -176,7 +176,7 @@ pub async fn bundler_exp_iperf(
     //))?;
 
     // let everything settle
-    tokio::time::delay_for(tokio::time::Duration::from_secs(5)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
     // iperf receiver
     receiver
@@ -213,7 +213,7 @@ pub async fn bundler_exp_iperf(
     debug!(cmd = ?&iperf_cmd, "starting iperf sender 2");
     sender.ssh.shell(&iperf_cmd).status().await?;
 
-    tokio::time::delay_for(tokio::time::Duration::from_secs(15)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
 
     // bmon receiver
     debug!("starting bmon");
@@ -225,7 +225,7 @@ pub async fn bundler_exp_iperf(
         ))
         .status().await?;
 
-    tokio::time::delay_for(tokio::time::Duration::from_secs(165)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(165)).await;
 
     cleanup_netns(sender).await?;
 
@@ -310,7 +310,7 @@ pub async fn nobundler_exp_iperf(
     sender.ssh.shell(&udping_sender_receiver).status().await?;
 
     // wait to start
-    tokio::time::delay_for(tokio::time::Duration::from_secs(5)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
     // 2x iperf sender
     let iperf_cmd = format!(
@@ -327,7 +327,7 @@ pub async fn nobundler_exp_iperf(
     debug!(cmd = ?&iperf_cmd, "starting iperf sender 2");
     sender.ssh.shell(&iperf_cmd).status().await?;
 
-    tokio::time::delay_for(tokio::time::Duration::from_secs(15)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
 
     // bmon receiver
     debug!("starting bmon");
@@ -339,7 +339,7 @@ pub async fn nobundler_exp_iperf(
         ))
         .status().await?;
 
-    tokio::time::delay_for(tokio::time::Duration::from_secs(165)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(165)).await;
 
     get_file(
         sender.ssh,
@@ -404,7 +404,7 @@ pub async fn nobundler_exp_control(
 
     debug!("control, waiting");
 
-    tokio::time::delay_for(tokio::time::Duration::from_secs(180)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(180)).await;
 
     debug!("control, getting files");
 
@@ -522,7 +522,7 @@ pub async fn install_basic_packages(ssh: &Session) -> Result<(), Error> {
             Err(e) => debug!(err = ?e, "apt failed"),
         }
 
-        tokio::time::delay_for(tokio::time::Duration::from_secs(100)).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(100)).await;
     }
 }
 
